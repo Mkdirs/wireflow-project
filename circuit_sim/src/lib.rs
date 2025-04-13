@@ -61,7 +61,7 @@ impl Circuit {
         }
 
         let wire_id = format!("{}.{}_{}.{}", source.0, source.1, target.0, target.1);
-        let edge_id = self.graph.update_edge(*source_node_id, *target_node_id, (source.1.to_string(), target.1.to_string()));
+        let edge_id = self.graph.add_edge(*source_node_id, *target_node_id, (source.1.to_string(), target.1.to_string()));
         self.edges_id.insert(wire_id, edge_id);
         true
     }

@@ -41,90 +41,36 @@ fn main(){
         simulation.circuit.add(make_nand_component("nand1"));
         
 
-        // simulation.circuit.add(Component::new("clock", ComponentType::CLOCK(
-        //     Instant::now(),
-        //     Duration::from_secs(1)
-        // )));
-        
-        //println!("{}", simulation.circuit.wire(("clock", "output0"), ("nand1", "input0")));
-        //println!("{}", simulation.circuit.wire(("clock", "output0"), ("nand1", "input1")));
-        
+        simulation.circuit.add(Component::new("clock", ComponentType::CLOCK(
+            Instant::now(),
+            Duration::from_secs(1)
+        )));
 
-        {
-            Simulation::step_until_stable(&mut simulation.circuit);
-            let nand1 = simulation.circuit.get("nand1").unwrap();
-            let input0 = nand1.get("input0").unwrap();
-            let input1 = nand1.get("input1").unwrap();
-            let output = nand1.get("output0").unwrap();
-            println!("NAND({}, {}) = {}", input0.value, input1.value, output.value);
-        };
 
-        {
-            let nand1 = simulation.circuit.get_mut("nand1").unwrap();
-            nand1.set("input0", true);
-            nand1.set("input1", false);
-        };
-
-        {
-            Simulation::step_until_stable(&mut simulation.circuit);
-            let nand1 = simulation.circuit.get("nand1").unwrap();
-            let input0 = nand1.get("input0").unwrap();
-            let input1 = nand1.get("input1").unwrap();
-            let output = nand1.get("output0").unwrap();
-            println!("NAND({}, {}) = {}", input0.value, input1.value, output.value);
-        };
-
-        {
-            let nand1 = simulation.circuit.get_mut("nand1").unwrap();
-            nand1.set("input0", false);
-            nand1.set("input1", true);
-        };
-
-        {
-            Simulation::step_until_stable(&mut simulation.circuit);
-            let nand1 = simulation.circuit.get("nand1").unwrap();
-            let input0 = nand1.get("input0").unwrap();
-            let input1 = nand1.get("input1").unwrap();
-            let output = nand1.get("output0").unwrap();
-            println!("NAND({}, {}) = {}", input0.value, input1.value, output.value);
-        };
-
-        {
-            let nand1 = simulation.circuit.get_mut("nand1").unwrap();
-            nand1.set("input0", true);
-            nand1.set("input1", true);
-        };
-
-        {
-            Simulation::step_until_stable(&mut simulation.circuit);
-            let nand1 = simulation.circuit.get("nand1").unwrap();
-            let input0 = nand1.get("input0").unwrap();
-            let input1 = nand1.get("input1").unwrap();
-            let output = nand1.get("output0").unwrap();
-            println!("NAND({}, {}) = {}", input0.value, input1.value, output.value);
-        };
+        println!("{}", simulation.circuit.wire(("clock", "output0"), ("nand1", "input0")));
+        println!("{}", simulation.circuit.wire(("clock", "output0"), ("nand1", "input1")));
         
     };
     
     Simulation::run(simulation.clone());
-    //thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_secs(1));
     
-    // loop {
-    //     {
-    //         let simulation = simulation.lock().unwrap();
-    // 
-    //         let nand = simulation.circuit.get("nand1").unwrap();
-    //         let input0 = nand.get("input0").unwrap();
-    //         let input1 = nand.get("input1").unwrap();
-    //         let output = nand.get("output0").unwrap();
-    //         
-    //         // println!("{:?}", input0);
-    //         // println!("{:?}", input1);
-    //         // println!("{:?}", output);
-    // 
-    //         println!("NAND({}, {}) = {}", input0.value, input1.value, output.value);
-    //     }
-    //     thread::sleep(Duration::from_secs(1));
-    // }
+    loop {
+        {
+            let simulation = simulation.lock().unwrap();
+    
+            let nand = simulation.circuit.get("nand1").unwrap();
+            let input0 = nand.get("input0").unwrap();
+            let input1 = nand.get("input1").unwrap();
+            let output = nand.get("output0").unwrap();
+            
+            // println!("{:?}", input0);
+            // println!("{:?}", input1);
+            // println!("{:?}", output);
+    
+            println!("NAND({}, {}) = {}", input0.value, input1.value, output.value);
+        }
+        thread::sleep(Duration::from_secs(1));
+    }
     
 }
