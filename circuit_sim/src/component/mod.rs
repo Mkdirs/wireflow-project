@@ -164,7 +164,7 @@ impl Component {
                 }
 
                 // Propagation interne
-                Simulation::step_until_stable(circuit);
+                let dirty = Simulation::step(circuit);
 
                 // Extraire les sorties du circuit
                 for descriptor in pins.iter()
@@ -177,7 +177,7 @@ impl Component {
                     outer_pin.value = inner_comp.get("output0").unwrap().value;
                 }
 
-                self.is_dirty = false;
+                self.is_dirty = dirty;
             },
             
             ComponentType::IO => {
