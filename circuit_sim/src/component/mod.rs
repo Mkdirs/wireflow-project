@@ -14,7 +14,9 @@ pub enum ComponentType {
     OR,
     XOR,
     NOT,
-    CLOCK(Instant, Duration)
+    CLOCK(Instant, Duration),
+    COMPOUND(Circuit, PinsDescriptor),
+    IO
 }
 
 /// A pin is where data enter/exit a component
@@ -149,6 +151,41 @@ impl Component {
                     self.is_dirty = false;
                 }
             },
+            
+            ComponentType::COMPOUND(circuit, pins) => {
+                // Injecter les entrées dans le circuit
+                for descriptor in pins.iter()
+                    .filter(|pin| pin.mode == PinMode::Input) {
+                    
+                    let outer_pin = self.pins.get_mut(&descriptor.id).unwrap();
+                    let inner_comp = circuit.get_mut(&descriptor.id).unwrap();
+                    assert!(matches!(inner_comp.node_type, ComponentType::IO));
+                    inner_comp.set("input0", outer_pin.value);
+                }
+
+                // Propagation interne
+                Simulation::step_until_stable(circuit);
+
+                // Extraire les sorties du circuit
+                for descriptor in pins.iter()
+                    .filter(|pin| pin.mode == PinMode::Output) {
+                    
+                    let outer_pin = self.pins.get_mut(&descriptor.id).unwrap();
+                    let inner_comp = circuit.get_mut(&descriptor.id).unwrap();
+                    assert!(matches!(inner_comp.node_type, ComponentType::IO));
+                    
+                    outer_pin.value = inner_comp.get("output0").unwrap().value;
+                }
+
+                self.is_dirty = false;
+            },
+            
+            ComponentType::IO => {
+                let input = self.get("input0").expect("input0");
+
+                self.set("output0", input.value);
+                self.is_dirty = false;
+            }
         };
     }
 
@@ -178,9 +215,19 @@ impl Component {
         self.pins.values().collect()
     }
     
+    pub fn pins_mut(&mut self) -> Vec<&mut Pin> {
+        self.pins.values_mut().collect()
+    }
+    
     /// Gets all input pins
     pub fn inputs(&self) -> Vec<&Pin> {
         self.pins.values()
+            .filter(|pin| pin.mode == PinMode::Input)
+            .collect()
+    }
+    
+    pub fn inputs_mut(&mut self) -> Vec<&mut Pin> {
+        self.pins.values_mut()
             .filter(|pin| pin.mode == PinMode::Input)
             .collect()
     }
@@ -188,6 +235,12 @@ impl Component {
     /// Gets all output pins
     pub fn outputs(&self) -> Vec<&Pin> {
         self.pins.values()
+            .filter(|pin| pin.mode == PinMode::Output)
+            .collect()
+    }
+
+    pub fn outputs_mut(&mut self) -> Vec<&mut Pin> {
+        self.pins.values_mut()
             .filter(|pin| pin.mode == PinMode::Output)
             .collect()
     }
@@ -200,7 +253,9 @@ impl ComponentDescriptor for ComponentType {
             ComponentType::OR => "OR".to_string(),
             ComponentType::XOR => "XOR".to_string(),
             ComponentType::NOT => "NOT".to_string(),
-            ComponentType::CLOCK(_, _) => "CLOCK".to_string()
+            ComponentType::CLOCK(_, _) => "CLOCK".to_string(),
+            ComponentType::COMPOUND(_, _) => "COMPOUND".to_string(),
+            ComponentType::IO => "IO".to_string(),
         }
     }
 
@@ -211,12 +266,13 @@ impl ComponentDescriptor for ComponentType {
                 describe_pin("input1", "B", PinMode::Input),
                 describe_pin("output0", "OUT", PinMode::Output),
             ],
-            ComponentType::NOT => vec![
+            ComponentType::NOT | ComponentType::IO => vec![
                 describe_pin("input0", "IN", PinMode::Input),
                 describe_pin("output0", "OUT", PinMode::Output),
             ],
+            ComponentType::CLOCK(_, _) => vec![describe_pin("output0", "OUT", PinMode::Output)],
+            ComponentType::COMPOUND(_, pins) => pins.clone(),
             
-            ComponentType::CLOCK(_, _) => vec![describe_pin("output0", "OUT", PinMode::Output)]
         }
     }
 }

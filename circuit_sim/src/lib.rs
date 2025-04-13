@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 use petgraph::prelude::*;
 use petgraph::visit::Topo;
 use crate::component::{Component, ComponentType, PinMode};
