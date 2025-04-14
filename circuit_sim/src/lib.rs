@@ -123,7 +123,7 @@ impl Simulation {
                     let mut simulation = simulation.lock().unwrap();
 
                     if !simulation.running {
-                        continue;
+                        break;
                     }
 
                     Self::step(&mut simulation.circuit);

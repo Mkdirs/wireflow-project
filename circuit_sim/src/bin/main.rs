@@ -47,13 +47,13 @@ fn main(){
         )));
 
 
-        println!("{}", simulation.circuit.wire(("clock", "output0"), ("nand1", "input0")));
-        println!("{}", simulation.circuit.wire(("clock", "output0"), ("nand1", "input1")));
+        simulation.circuit.wire(("clock", "output0"), ("nand1", "input0"));
+        simulation.circuit.wire(("clock", "output0"), ("nand1", "input1"));
         
     };
     
     Simulation::run(simulation.clone());
-    thread::sleep(Duration::from_secs(1));
+    //thread::sleep(Duration::from_secs(1));
     
     loop {
         {
