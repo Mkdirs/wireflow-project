@@ -52,7 +52,7 @@ fn main(){
         
     };
     
-    Simulation::run(simulation.clone());
+    Simulation::run(simulation.clone(), ||{});
     //thread::sleep(Duration::from_secs(1));
     
     loop {

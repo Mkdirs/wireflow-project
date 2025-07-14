@@ -11,7 +11,7 @@ pub mod component;
 
 #[derive(Debug, Default, Clone)]
 pub struct Circuit {
-    graph: DiGraph<Component, (String, String)>,
+    pub graph: DiGraph<Component, (String, String)>,
     components_id: HashMap<String, NodeIndex>,
     edges_id: HashMap<String, EdgeIndex>,
 }
@@ -108,16 +108,17 @@ impl Circuit {
 
 impl Simulation {
 
-    pub fn run(simulation: Arc<Mutex<Simulation>>) -> Option<JoinHandle<()>> {
+    pub fn run(simulation: Arc<Mutex<Simulation>>, step_callback: impl Fn() -> ()) //-> Option<JoinHandle<()>>
+    {
         let mut sim = simulation.lock().unwrap();
         if sim.running {
-            return None;
+            return;
         }
         
         sim.running = true;
         drop(sim);
         
-        Some(thread::spawn(move || {
+        //Some(thread::spawn(move || {
             loop {
                 {
                     let mut simulation = simulation.lock().unwrap();
@@ -127,9 +128,10 @@ impl Simulation {
                     }
 
                     Self::step(&mut simulation.circuit);
+                    step_callback();
                 };
             }
-        }))
+        //}))
     }
 
     /// Returns `true` if the circuit has any dirty component

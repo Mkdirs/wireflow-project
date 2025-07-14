@@ -28,6 +28,8 @@ pub struct Pin {
     pub label: String,
     pub mode: PinMode,
     pub value: bool,
+    pub x: f32,
+    pub y: f32,
 }
 
 /// A Component receives inputs and gives outputs
@@ -39,7 +41,9 @@ pub struct Component {
     pub id: String,
     pub label: String,
     pub node_type: ComponentType,
-    pub is_dirty: bool
+    pub is_dirty: bool,
+    pub x: f32,
+    pub y: f32
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -76,7 +80,9 @@ impl Pin {
             id: id.to_string(),
             label: label.to_string(),
             mode,
-            value
+            value,
+            x: 0.0,
+            y: 0.0
         }
     }
 }
@@ -94,7 +100,9 @@ impl Component {
                         id: pin_desc.id,
                         label: pin_desc.label,
                         mode: pin_desc.mode,
-                        value: false
+                        value: false,
+                        x: 0.0,
+                        y: 0.0
                     }
                 )));
 
@@ -103,7 +111,9 @@ impl Component {
             pins,
             label: node_type.label(),
             node_type,
-            is_dirty: true
+            is_dirty: true,
+            x: 0.0,
+            y: 0.0
         }
     }
     
