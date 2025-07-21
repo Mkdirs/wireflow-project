@@ -45,7 +45,6 @@ impl Default for CircuitsScene {
             ));
 
             let and = Component::new("and", ComponentType::AND);
-            let and2 = Component::new("and2", ComponentType::AND);
             let or = Component::new("or", ComponentType::OR);
             let mut simulation = simulation.lock().unwrap();
             //simulation.circuit.add(clock);
@@ -55,6 +54,9 @@ impl Default for CircuitsScene {
             simulation.circuit.add(Component::new("not", ComponentType::NOT));
             simulation.circuit.add(Component::new("xor", ComponentType::XOR));
             simulation.circuit.add(Component::new("io", ComponentType::IO));
+            simulation.circuit.add(Component::new("nand", ComponentType::NAND));
+            simulation.circuit.add(Component::new("nor", ComponentType::NOR));
+            simulation.circuit.add(Component::new("xnor", ComponentType::XNOR));
         }
         Self {
             simulation,

@@ -1,13 +1,7 @@
 use eframe::egui::{Color32, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
-use eframe::egui::accesskit::Role::Code;
-use eframe::egui::ImageData::Color;
-use eframe::egui::Key::Colon;
 use eframe::epaint::{CornerRadiusF32, QuadraticBezierShape};
 use circuit_sim::component::Component;
-
-const PIN_LENGTH:f32 = 12.0;
-const INPUT_SPACING:f32 = 16.0;
-const STROKE_SIZE:f32 = 3.0;
+use crate::ui_elements::circuits::{INPUT_SPACING, PIN_LENGTH, STROKE_SIZE};
 
 pub fn draw_and_gate(component: &mut Component, painter: &Painter, rect: &Rect) {
     let mut corner_radius = CornerRadiusF32::same(0.0);
@@ -78,23 +72,24 @@ pub fn draw_not_gate(component: &mut Component, painter: &Painter, rect: &Rect) 
 }
 
 pub fn draw_xor_gate(component: &mut Component, painter: &Painter, rect: &Rect) {
-    let spacing = 8.0;
+    let spacing = 7.0;
     draw_or_gate(component, painter, rect);
-    let quad_bezier = QuadraticBezierShape::from_points_stroke([rect.left_top()+Vec2::RIGHT*spacing, rect.left_center()+Vec2::RIGHT*(5.0+spacing), rect.left_bottom()+Vec2::RIGHT*spacing], false, Color32::TRANSPARENT, Stroke::new(STROKE_SIZE/2.0, Color32::WHITE));
+    let quad_bezier = QuadraticBezierShape::from_points_stroke([rect.left_top()+Vec2::RIGHT*spacing, rect.left_center()+Vec2::RIGHT*(5.0+spacing), rect.left_bottom()+Vec2::RIGHT*spacing], false, Color32::TRANSPARENT, Stroke::new(STROKE_SIZE, Color32::WHITE));
 
     painter.add(quad_bezier);
 }
 
-pub fn draw_io(component: &mut Component, painter: &Painter, rect: &Rect) {
-    let color = if component.id.contains("input") {
-        Color32::GREEN
-    } else {
-        Color32::RED
-    };
+pub fn draw_nand_gate(component: &mut Component, painter: &Painter, rect: &Rect) {
+    draw_and_gate(component, painter, rect);
+    painter.circle_filled(rect.right_center()-Vec2::RIGHT*PIN_LENGTH, STROKE_SIZE+1.5, Color32::WHITE);
+}
 
-    painter.hline(rect.left()+PIN_LENGTH..=rect.left(), rect.center().y, Stroke::new(STROKE_SIZE, Color32::WHITE));
+pub fn draw_nor_gate(component: &mut Component, painter: &Painter, rect: &Rect) {
+    draw_or_gate(component, painter, rect);
+    painter.circle_filled(rect.right_center()-Vec2::RIGHT*PIN_LENGTH, STROKE_SIZE+1.5, Color32::WHITE);
+}
 
-    painter.circle_filled(rect.center(), rect.width()/2.0 - PIN_LENGTH, color);
-
-    painter.hline(rect.right()-PIN_LENGTH..=rect.right(), rect.center().y, Stroke::new(STROKE_SIZE, Color32::WHITE));
+pub fn draw_xnor_gate(component: &mut Component, painter: &Painter, rect: &Rect) {
+    draw_xor_gate(component, painter, rect);
+    painter.circle_filled(rect.right_center()-Vec2::RIGHT*PIN_LENGTH, STROKE_SIZE+1.5, Color32::WHITE);
 }

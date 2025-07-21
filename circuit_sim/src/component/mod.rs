@@ -14,6 +14,9 @@ pub enum ComponentType {
     OR,
     XOR,
     NOT,
+    NAND,
+    NOR,
+    XNOR,
     CLOCK(Instant, Duration),
     COMPOUND(Circuit, PinsDescriptor),
     IO
@@ -150,7 +153,27 @@ impl Component {
                 self.set("output0", !input.value);
                 self.is_dirty = false;
             },
-            
+            ComponentType::NAND => {
+                let a = self.get("input0").expect("input0");
+                let b = self.get("input1").expect("input1");
+
+                self.set("output0", !(a.value && b.value));
+                self.is_dirty = false;
+            },
+            ComponentType::NOR => {
+                let a = self.get("input0").expect("input0");
+                let b = self.get("input1").expect("input1");
+
+                self.set("output0", !(a.value || b.value));
+                self.is_dirty = false;
+            },
+            ComponentType::XNOR => {
+                let a = self.get("input0").expect("input0");
+                let b = self.get("input1").expect("input1");
+
+                self.set("output0", !(a.value ^ b.value));
+                self.is_dirty = false;
+            },
             ComponentType::CLOCK(instant, duration) => {
                 let output = self.pins.get_mut("output0").unwrap();
                 if Instant::now().duration_since(*instant) >= *duration {
@@ -263,6 +286,9 @@ impl ComponentDescriptor for ComponentType {
             ComponentType::OR => "OR".to_string(),
             ComponentType::XOR => "XOR".to_string(),
             ComponentType::NOT => "NOT".to_string(),
+            ComponentType::NAND => "NAND".to_string(),
+            ComponentType::NOR => "NOR".to_string(),
+            ComponentType::XNOR => "XNOR".to_string(),
             ComponentType::CLOCK(_, _) => "CLOCK".to_string(),
             ComponentType::COMPOUND(_, _) => "COMPOUND".to_string(),
             ComponentType::IO => "IO".to_string(),
@@ -271,7 +297,8 @@ impl ComponentDescriptor for ComponentType {
 
     fn describe(&self) -> PinsDescriptor {
         match self {
-            ComponentType::AND | ComponentType::OR | ComponentType::XOR  => vec![
+            ComponentType::AND | ComponentType::OR | ComponentType::XOR
+            | ComponentType::NAND | ComponentType::NOR | ComponentType::XNOR => vec![
                 describe_pin("input0", "A", PinMode::Input),
                 describe_pin("input1", "B", PinMode::Input),
                 describe_pin("output0", "OUT", PinMode::Output),
