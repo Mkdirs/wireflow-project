@@ -15,14 +15,20 @@ pub fn draw_and_gate(component: &mut Component, painter: &Painter, rect: &Rect) 
     inputs.sort_by_key(|input| input.id.clone());
 
     let inputs_size = (STROKE_SIZE *inputs.len() as f32)+(inputs.len()-1) as f32 * INPUT_SPACING;
-    for (i, input) in inputs.iter().enumerate() {
-        painter.hline(rect.left()..=rect.left()+ PIN_LENGTH, rect.top() + (i as f32* INPUT_SPACING) + (rect.size().y/2.0 - inputs_size / 2.0) + STROKE_SIZE, Stroke::new(STROKE_SIZE, color));
+    for (i, input) in inputs.into_iter().enumerate() {
+        let y = rect.top() + (i as f32* INPUT_SPACING) + (rect.size().y/2.0 - inputs_size / 2.0) + STROKE_SIZE;
+        painter.hline(rect.left()..=rect.left()+ PIN_LENGTH, y, Stroke::new(STROKE_SIZE, color));
+        input.x = rect.left();
+        input.y = y;
     }
 
     let body_rect = Rect::from_min_size(pos+Vec2::RIGHT* PIN_LENGTH, Vec2::splat(rect.size().y));
     painter.rect_stroke(body_rect, corner_radius, Stroke::new(STROKE_SIZE, color), StrokeKind::Inside);
 
     painter.hline(rect.right()-PIN_LENGTH..=rect.right(), rect.center().y, Stroke::new(STROKE_SIZE, color));
+    let output = component.get_mut("output0").unwrap();
+    output.x = rect.right();
+    output.y = rect.center().y;
 }
 
 pub fn draw_or_gate(component: &mut Component, painter: &Painter, rect: &Rect) {
@@ -37,8 +43,11 @@ pub fn draw_or_gate(component: &mut Component, painter: &Painter, rect: &Rect) {
     inputs.sort_by_key(|input| input.id.clone());
 
     let inputs_size = (STROKE_SIZE *inputs.len() as f32)+(inputs.len()-1) as f32 * INPUT_SPACING;
-    for (i, input) in inputs.iter().enumerate() {
-        painter.hline(rect.left()..=rect.left()+ PIN_LENGTH, rect.top() + (i as f32* INPUT_SPACING) + (rect.size().y/2.0 - inputs_size / 2.0) + STROKE_SIZE, Stroke::new(STROKE_SIZE, color));
+    for (i, input) in inputs.into_iter().enumerate() {
+        let y = rect.top() + (i as f32* INPUT_SPACING) + (rect.size().y/2.0 - inputs_size / 2.0) + STROKE_SIZE;
+        painter.hline(rect.left()..=rect.left()+ PIN_LENGTH, y, Stroke::new(STROKE_SIZE, color));
+        input.x = rect.left();
+        input.y = y;
     }
 
     let body_rect = Rect::from_min_size(pos+Vec2::RIGHT*PIN_LENGTH, Vec2::splat(rect.size().y));
@@ -49,6 +58,9 @@ pub fn draw_or_gate(component: &mut Component, painter: &Painter, rect: &Rect) {
     painter.add(quad_bezier);
 
     painter.hline(rect.right()-PIN_LENGTH..=rect.right(), rect.center().y, Stroke::new(STROKE_SIZE, color));
+    let output = component.get_mut("output0").unwrap();
+    output.x = rect.right();
+    output.y = rect.center().y;
 }
 
 pub fn draw_not_gate(component: &mut Component, painter: &Painter, rect: &Rect) {
@@ -58,8 +70,11 @@ pub fn draw_not_gate(component: &mut Component, painter: &Painter, rect: &Rect) 
     inputs.sort_by_key(|input| input.id.clone());
 
     let inputs_size = (STROKE_SIZE *inputs.len() as f32)+(inputs.len()-1) as f32 * INPUT_SPACING;
-    for (i, input) in inputs.iter().enumerate() {
-        painter.hline(rect.left()..=rect.left()+ PIN_LENGTH, rect.top() + (i as f32* INPUT_SPACING) + (rect.size().y/2.0 - inputs_size / 2.0) + STROKE_SIZE, Stroke::new(STROKE_SIZE, color));
+    for (i, input) in inputs.into_iter().enumerate() {
+        let y = rect.top() + (i as f32* INPUT_SPACING) + (rect.size().y/2.0 - inputs_size / 2.0) + STROKE_SIZE;
+        painter.hline(rect.left()..=rect.left()+ PIN_LENGTH, y, Stroke::new(STROKE_SIZE, color));
+        input.x = rect.left();
+        input.y = y;
     }
 
     painter.vline(rect.left()+PIN_LENGTH, rect.top()..=rect.bottom(), Stroke::new(STROKE_SIZE, color));
@@ -69,6 +84,9 @@ pub fn draw_not_gate(component: &mut Component, painter: &Painter, rect: &Rect) 
     painter.circle_filled(rect.right_center()-Vec2::RIGHT*PIN_LENGTH, STROKE_SIZE+1.5, color);
 
     painter.hline(rect.right()-PIN_LENGTH..=rect.right(), rect.center().y, Stroke::new(STROKE_SIZE, color));
+    let output = component.get_mut("output0").unwrap();
+    output.x = rect.right();
+    output.y = rect.center().y;
 }
 
 pub fn draw_xor_gate(component: &mut Component, painter: &Painter, rect: &Rect) {
