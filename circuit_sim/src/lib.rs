@@ -9,7 +9,7 @@ use crate::component::{Component, ComponentType, PinMode};
 
 pub mod component;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct Circuit {
     pub graph: DiGraph<Component, (String, String)>,
     components_id: HashMap<String, NodeIndex>,
@@ -141,7 +141,8 @@ impl Simulation {
         while let Some(node_index) = topo.next(&circuit.graph) {
             let execute = {
                 let node = &circuit.graph[node_index];
-                node.is_dirty || matches!(node.node_type, ComponentType::CLOCK(_, _))
+                true
+                // node.is_dirty || matches!(node.node_type, ComponentType::CLOCK(_, _))
             };
 
             if !execute {
@@ -151,7 +152,7 @@ impl Simulation {
             let output_before = {
                 circuit.graph[node_index].pins().iter()
                     .filter(|pin| matches!(pin.mode, PinMode::Output))
-                    .map(|pin| (pin.id.clone(), pin.value))
+                    .map(|pin| (pin.id.clone(), pin.value.clone()))
                     .collect::<HashMap<_, _>>()
             };
 
@@ -165,10 +166,12 @@ impl Simulation {
                     let source_node = &circuit.graph[node_index];
 
                     let new_value = source_node.get(source_pin_id)
-                        .map(|pin| pin.value)
-                        .unwrap_or(false);
+                        .map(|pin| pin.value.clone())
+                        .unwrap_or_default();
 
-                    let old_value = output_before.get(source_pin_id).copied().unwrap_or(false);
+                    let old_value = output_before.get(source_pin_id)
+                        .cloned()
+                        .unwrap_or_default();
 
                     (target_index, target_pin_id.clone(), new_value, old_value)
                 })
@@ -177,7 +180,7 @@ impl Simulation {
             for (target_index, target_pin_id, new_value, old_value) in updates {
                 if new_value != old_value {
                     let target_node = circuit.graph.node_weight_mut(target_index).unwrap();
-                    target_node.set(&target_pin_id, new_value);
+                    target_node.set(&target_pin_id, new_value.as_slice());
                 }
             }
         }

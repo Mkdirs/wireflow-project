@@ -1,4 +1,4 @@
-use eframe::egui::{Align, Align2, Color32, FontId, Frame, Id, Label, Layout, Margin, Painter, Pos2, Rect, Response, RichText, Sense, SidePanel, Stroke, StrokeKind, Ui, UiBuilder, Vec2};
+use eframe::egui::{output, Align, Align2, Color32, FontId, Frame, Id, Label, Layout, Margin, Painter, Pos2, Rect, Response, RichText, Sense, SidePanel, Stroke, StrokeKind, Ui, UiBuilder, Vec2};
 use eframe::egui::Shape::CubicBezier;
 use eframe::epaint::{CubicBezierShape, Marginf, QuadraticBezierShape, RectShape};
 use circuit_sim::component::{Component, ComponentType};
@@ -16,6 +16,7 @@ pub fn draw(component: &mut Component, ui: &mut Ui) -> Response {
     let pos = Pos2::new(component.x, component.y);
     let rect = Rect::from_min_size(pos, LOGIC_GATE_SIZE);
 
+
     let res = ui.put(rect, |ui: &mut Ui| {
         if matches!(component.node_type, ComponentType::COMPOUND(_, _)) {
             return draw_compound(component, ui);
@@ -23,7 +24,7 @@ pub fn draw(component: &mut Component, ui: &mut Ui) -> Response {
 
         let (res, painter) = ui.allocate_painter(
             LOGIC_GATE_SIZE,
-            Sense::drag()
+            Sense::drag() | Sense::hover()
         );
 
         match component.node_type {
@@ -41,11 +42,6 @@ pub fn draw(component: &mut Component, ui: &mut Ui) -> Response {
 
         res
     });
-
-    for pin in component.pins() {
-        let pos = Pos2::new(pin.x, pin.y);
-        let id = format!("{}-{}", component.id,pin.id);
-    }
 
     res
 }
@@ -67,17 +63,20 @@ fn draw_io(component: &mut Component, painter: &Painter, rect: &Rect) {
     let stroke = Stroke::new(STROKE_SIZE, Color32::WHITE);
     let input_pos = Pos2::new(rect.left(), rect.center().y);
     let output_pos = Pos2::new(rect.right(), rect.center().y);
+    let mut pins_color = [stroke.color;2];
 
     {
         let input = component.get_mut("input0").unwrap();
         input.x = input_pos.x;
         input.y = input_pos.y;
+        pins_color[0] = if input.value { Color32::GREEN } else { pins_color[0] };
     }
 
     {
         let output = component.get_mut("output0").unwrap();
         output.x = output_pos.x;
         output.y = output_pos.y;
+        pins_color[1] = if output.value { Color32::GREEN } else { pins_color[0] };
     }
 
     let display_label = if component.id.contains("input") {
@@ -90,8 +89,14 @@ fn draw_io(component: &mut Component, painter: &Painter, rect: &Rect) {
 
     painter.circle_stroke(rect.center(), rect.width()/2.0 - PIN_LENGTH - STROKE_SIZE, stroke);
     painter.text(rect.center(), Align2::CENTER_CENTER, display_label, font, Color32::WHITE);
-    painter.hline(input_pos.x + PIN_LENGTH..=input_pos.x, input_pos.y, stroke);
-    painter.hline(output_pos.x - PIN_LENGTH..=output_pos.x, rect.center().y, stroke);
+    painter.hline(input_pos.x + PIN_LENGTH..=input_pos.x, input_pos.y, Stroke{
+        color: pins_color[0],
+        ..stroke
+    });
+    painter.hline(output_pos.x - PIN_LENGTH..=output_pos.x, rect.center().y, Stroke {
+        color: pins_color[1],
+        ..stroke
+    });
 }
 
 fn draw_clock(component: &mut Component, painter: &Painter, rect: &Rect) {
@@ -109,8 +114,11 @@ fn draw_clock(component: &mut Component, painter: &Painter, rect: &Rect) {
         Stroke::new(STROKE_SIZE, Color32::WHITE)
     );
     painter.add(curve);
-    painter.hline(rect.right()- PIN_LENGTH..=rect.right(), rect.center().y, Stroke::new(STROKE_SIZE, Color32::WHITE));
     let output = component.get_mut("output0").unwrap();
+    painter.hline(rect.right()- PIN_LENGTH..=rect.right(), rect.center().y, Stroke::new(
+        STROKE_SIZE,
+        if output.value { Color32::GREEN } else { Color32::WHITE }
+    ));
     output.x = rect.right();
     output.y = rect.center().y;
 
@@ -139,7 +147,10 @@ fn draw_compound(component: &mut Component, ui: &mut Ui) -> Response {
                                     let painter = ui.painter();
                                     let next_pos = ui.next_widget_position();
                                     let start_x = next_pos.x-SPACING-STROKE_SIZE;
-                                    painter.hline(start_x..=start_x-PIN_LENGTH*2.0, next_pos.y, Stroke::new(STROKE_SIZE, Color32::WHITE));
+                                    painter.hline(start_x..=start_x-PIN_LENGTH*2.0, next_pos.y, Stroke::new(
+                                        STROKE_SIZE,
+                                        if input.value { Color32::GREEN } else { Color32::WHITE }
+                                    ));
                                     input.x = start_x-PIN_LENGTH*2.0;
                                     input.y = next_pos.y;
                                 }
@@ -178,8 +189,11 @@ fn draw_compound(component: &mut Component, ui: &mut Ui) -> Response {
                             for (ind, pos) in positions.into_iter().enumerate() {
                                 let painter = ui.painter();
                                 let start_x = ui.min_rect().right()+SPACING+STROKE_SIZE;
-                                painter.hline(start_x..=start_x+PIN_LENGTH*2.0, pos, Stroke::new(STROKE_SIZE, Color32::WHITE));
                                 let output = component.get_mut(&format!("output{ind}")).unwrap();
+                                painter.hline(start_x..=start_x+PIN_LENGTH*2.0, pos, Stroke::new(
+                                    STROKE_SIZE,
+                                    if output.value { Color32::GREEN } else { Color32::WHITE }
+                                ));
                                 output.x = start_x+PIN_LENGTH*2.0;
                                 output.y = pos;
                             }

@@ -1,6 +1,38 @@
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::num::NonZeroUsize;
+use std::ops::Deref;
 use std::time::{Duration, Instant};
 use crate::{Circuit, Simulation};
+
+/// A Component receives inputs and gives outputs
+///
+/// e.g: [And](logic::And)
+#[derive(Debug)]
+pub struct Component {
+    pub id: String,
+    pub name: String,
+    pub component_type: Box<dyn ComponentType>,
+    pub is_dirty: bool,
+    pub x: f32,
+    pub y: f32,
+    pins: HashMap<String, Pin>
+}
+
+/// A pin is where data enter/exit a component
+///
+/// It can be an [Input](PinMode::Input) or an [Output](PinMode::Output)
+#[derive(Debug, PartialEq, Clone)]
+pub struct Pin {
+    pub name: String,
+    pub mode: PinMode,
+    pub channels: NonZeroUsize,
+    pub value: Vec<bool>,
+    pub x: f32,
+    pub y: f32,
+}
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum PinMode {
@@ -8,257 +40,80 @@ pub enum PinMode {
     Output
 }
 
-#[derive(Debug, Clone)]
-pub enum ComponentType {
-    AND,
-    OR,
-    XOR,
-    NOT,
-    NAND,
-    NOR,
-    XNOR,
-    CLOCK(Instant, Duration),
-    COMPOUND(Circuit, PinsDescriptor),
-    IO
+pub trait ComponentType : Any+Debug {
+    fn name(&self) -> String;
+    fn description(&self) -> String;
+    fn default_pins(&self) -> Vec<Pin>;
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>);
 }
-
-/// A pin is where data enter/exit a component
-/// 
-/// It can be an [Input](PinMode::Input) or an [Output](PinMode::Output)
-#[derive(Debug, PartialEq, Clone)]
-pub struct Pin {
-    pub id: String,
-    pub label: String,
-    pub mode: PinMode,
-    pub value: bool,
-    pub x: f32,
-    pub y: f32,
-}
-
-/// A Component receives inputs and gives outputs
-/// 
-/// e.g: [And](logic::And)
-#[derive(Debug, Clone)]
-pub struct Component {
-    pins: HashMap<String, Pin>,
-    pub id: String,
-    pub label: String,
-    pub node_type: ComponentType,
-    pub is_dirty: bool,
-    pub x: f32,
-    pub y: f32
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct PinDescriptor{
-    pub id: String,
-    pub label: String,
-    pub mode: PinMode,
-}
-
-/// See [PinDescriptor]
-pub type PinsDescriptor = Vec<PinDescriptor>;
-
-/// Describes the pin layout of a [component](Component)
-pub trait ComponentDescriptor {
-    
-    fn label(&self) -> String;
-
-    /// Describe your inputs and outputs
-    fn describe(&self) -> PinsDescriptor;
-}
-
-/// Utilitary function to construct a [PinDescriptor]
-pub fn describe_pin(id: &str, label: &str, mode:PinMode) -> PinDescriptor {
-    PinDescriptor{
-        id: id.to_string(),
-        label: label.to_string(),
-        mode
+impl dyn ComponentType {
+    pub fn as_any(&self) -> &dyn Any {
+        self
     }
 }
-
-impl Pin {
-    pub fn new(id: &str, label: &str, mode: PinMode, value: bool) -> Pin {
-        Pin{
-            id: id.to_string(),
-            label: label.to_string(),
-            mode,
-            value,
-            x: 0.0,
-            y: 0.0
-        }
-    }
-}
-
 
 impl Component {
     /// Constructs a new [Component] from the given descriptor [T]
-    pub fn new(id: &str, node_type: ComponentType) -> Self {
-        let pins_descriptor = node_type.describe();
-        let pins = HashMap::from_iter(
-            pins_descriptor.into_iter()
-                .map(|pin_desc| (
-                    pin_desc.id.clone(),
-                    Pin{
-                        id: pin_desc.id,
-                        label: pin_desc.label,
-                        mode: pin_desc.mode,
-                        value: false,
-                        x: 0.0,
-                        y: 0.0
-                    }
-                )));
-
+    fn new<T: ComponentType+Default+'static>(id: &str) -> Self
+    {
+        let comp = Box::new(T::default());
+        let pins:HashMap<String, Pin> = HashMap::from_iter(
+            comp.default_pins().into_iter()
+                .map(|pin| (pin.name.clone(), pin))
+                .collect::<Vec<_>>()
+        );
         Self {
             id: id.to_string(),
+            name: String::new(),
+            component_type: comp,
             pins,
-            label: node_type.label(),
-            node_type,
-            is_dirty: true,
+            is_dirty: false,
             x: 0.0,
             y: 0.0
         }
     }
-    
+
     pub fn compute(&mut self) {
-        if !self.is_dirty && !matches!(self.node_type, ComponentType::CLOCK(_, _)) {
-            return;
-        }
-
-        match &mut self.node_type {
-            ComponentType::AND => {
-                let a = self.get("input0").expect("input0");
-                let b = self.get("input1").expect("input1");
-
-                self.set("output0", a.value && b.value);
-                self.is_dirty = false;
-            },
-            ComponentType::OR => {
-                let a = self.get("input0").expect("input0");
-                let b = self.get("input1").expect("input1");
-
-                self.set("output0", a.value || b.value);
-                self.is_dirty = false;
-            },
-            ComponentType::XOR => {
-                let a = self.get("input0").expect("input0");
-                let b = self.get("input1").expect("input1");
-
-                self.set("output0", a.value ^ b.value);
-                self.is_dirty = false;
-            },
-            ComponentType::NOT => {
-                let input = self.get("input0").expect("input0");
-
-                self.set("output0", !input.value);
-                self.is_dirty = false;
-            },
-            ComponentType::NAND => {
-                let a = self.get("input0").expect("input0");
-                let b = self.get("input1").expect("input1");
-
-                self.set("output0", !(a.value && b.value));
-                self.is_dirty = false;
-            },
-            ComponentType::NOR => {
-                let a = self.get("input0").expect("input0");
-                let b = self.get("input1").expect("input1");
-
-                self.set("output0", !(a.value || b.value));
-                self.is_dirty = false;
-            },
-            ComponentType::XNOR => {
-                let a = self.get("input0").expect("input0");
-                let b = self.get("input1").expect("input1");
-
-                self.set("output0", !(a.value ^ b.value));
-                self.is_dirty = false;
-            },
-            ComponentType::CLOCK(instant, duration) => {
-                let output = self.pins.get_mut("output0").unwrap();
-                if Instant::now().duration_since(*instant) >= *duration {
-                    output.value = !output.value;
-                    self.is_dirty = true;
-                    *instant = Instant::now();
-                }else{
-                    self.is_dirty = false;
-                }
-            },
-            
-            ComponentType::COMPOUND(circuit, pins) => {
-                // Injecter les entrées dans le circuit
-                for descriptor in pins.iter()
-                    .filter(|pin| pin.mode == PinMode::Input) {
-                    
-                    let outer_pin = self.pins.get_mut(&descriptor.id).unwrap();
-                    let inner_comp = circuit.get_mut(&descriptor.id).unwrap();
-                    assert!(matches!(inner_comp.node_type, ComponentType::IO));
-                    inner_comp.set("input0", outer_pin.value);
-                }
-
-                // Propagation interne
-                let dirty = Simulation::step(circuit);
-
-                // Extraire les sorties du circuit
-                for descriptor in pins.iter()
-                    .filter(|pin| pin.mode == PinMode::Output) {
-                    
-                    let outer_pin = self.pins.get_mut(&descriptor.id).unwrap();
-                    let inner_comp = circuit.get_mut(&descriptor.id).unwrap();
-                    assert!(matches!(inner_comp.node_type, ComponentType::IO));
-                    
-                    outer_pin.value = inner_comp.get("output0").unwrap().value;
-                }
-
-                self.is_dirty = dirty;
-            },
-            
-            ComponentType::IO => {
-                let input = self.get("input0").expect("input0");
-
-                self.set("output0", input.value);
-                self.is_dirty = false;
-            }
-        };
+        self.component_type.compute(&mut self.pins);
     }
 
     /// Sets a pin's value
-    pub fn set(&mut self, pin_id: &str, value: bool) {
-        if let Some(pin) = self.pins.get_mut(pin_id) {
+    pub fn set(&mut self, pin_name: &str, value: &[bool]) {
+        if let Some(pin) = self.pins.get_mut(pin_name) {
             if pin.value != value {
-                pin.value = value;
+                pin.value = value.to_vec();
                 self.is_dirty = true;
             }
-            
+
         }
     }
 
     /// Gets a pin
-    pub fn get(&self, pin_id: &str) -> Option<&Pin> {
-        self.pins.get(pin_id)
-        
+    pub fn get(&self, pin_name: &str) -> Option<&Pin> {
+        self.pins.get(pin_name)
+
     }
-    
-    pub fn get_mut(&mut self, pin_id: &str) -> Option<&mut Pin> {
-        self.pins.get_mut(pin_id)
+
+    pub fn get_mut(&mut self, pin_name: &str) -> Option<&mut Pin> {
+        self.pins.get_mut(pin_name)
     }
-    
+
     /// gets all pins
     pub fn pins(&self) -> Vec<&Pin> {
         self.pins.values().collect()
     }
-    
+
     pub fn pins_mut(&mut self) -> Vec<&mut Pin> {
         self.pins.values_mut().collect()
     }
-    
+
     /// Gets all input pins
     pub fn inputs(&self) -> Vec<&Pin> {
         self.pins.values()
             .filter(|pin| pin.mode == PinMode::Input)
             .collect()
     }
-    
+
     pub fn inputs_mut(&mut self) -> Vec<&mut Pin> {
         self.pins.values_mut()
             .filter(|pin| pin.mode == PinMode::Input)
@@ -279,37 +134,312 @@ impl Component {
     }
 }
 
-impl ComponentDescriptor for ComponentType {
-    fn label(&self) -> String {
-        match self { 
-            ComponentType::AND => "AND".to_string(),
-            ComponentType::OR => "OR".to_string(),
-            ComponentType::XOR => "XOR".to_string(),
-            ComponentType::NOT => "NOT".to_string(),
-            ComponentType::NAND => "NAND".to_string(),
-            ComponentType::NOR => "NOR".to_string(),
-            ComponentType::XNOR => "XNOR".to_string(),
-            ComponentType::CLOCK(_, _) => "CLOCK".to_string(),
-            ComponentType::COMPOUND(_, _) => "COMPOUND".to_string(),
-            ComponentType::IO => "IO".to_string(),
+impl Pin {
+    pub fn new(name: &str, mode: PinMode, channels:NonZeroUsize) -> Pin {
+        Pin{
+            name: name.to_string(),
+            mode,
+            channels,
+            value: (0..channels.get()).map(|_| false).collect(),
+            x: 0.0,
+            y: 0.0
         }
     }
 
-    fn describe(&self) -> PinsDescriptor {
-        match self {
-            ComponentType::AND | ComponentType::OR | ComponentType::XOR
-            | ComponentType::NAND | ComponentType::NOR | ComponentType::XNOR => vec![
-                describe_pin("input0", "A", PinMode::Input),
-                describe_pin("input1", "B", PinMode::Input),
-                describe_pin("output0", "OUT", PinMode::Output),
-            ],
-            ComponentType::NOT | ComponentType::IO => vec![
-                describe_pin("input0", "IN", PinMode::Input),
-                describe_pin("output0", "OUT", PinMode::Output),
-            ],
-            ComponentType::CLOCK(_, _) => vec![describe_pin("output0", "OUT", PinMode::Output)],
-            ComponentType::COMPOUND(_, pins) => pins.clone(),
-            
+    pub fn high(&mut self) {
+        self.value = (0..self.channels.get()).map(|_| true).collect()
+    }
+
+    pub fn low(&mut self) {
+        self.value = (0..self.channels.get()).map(|_| false).collect()
+    }
+}
+
+#[inline]
+fn binary_logicgate_pins() -> [Pin;3] {
+    [
+        Pin::new("A", PinMode::Input, NonZeroUsize::new(1).unwrap()),
+        Pin::new("B", PinMode::Input, NonZeroUsize::new(1).unwrap()),
+        Pin::new("OUT", PinMode::Output, NonZeroUsize::new(1).unwrap()),
+    ]
+}
+
+#[inline]
+fn binary_logicgate_compute(pins: &mut HashMap<String,Pin>, f:impl Fn(bool, bool)->bool) {
+    pins.get_mut("OUT").unwrap().value = {
+        let a = pins.get("A").unwrap();
+        let b = pins.get("B").unwrap();
+        a.value.iter().zip(b.value.iter()).map(|(&a, &b)| f(a,b)).collect()
+    };
+}
+
+#[derive(Debug, Default)]
+pub struct And;
+impl ComponentType for And {
+    fn name(&self) -> String {
+        "wireflow:and".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Logic gate and".to_string()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        binary_logicgate_pins().to_vec()
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
+        binary_logicgate_compute(pins, |a, b| a && b);
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Or;
+impl ComponentType for Or {
+    fn name(&self) -> String {
+        "wireflow:or".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Logic gate or".to_string()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        binary_logicgate_pins().to_vec()
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
+        binary_logicgate_compute(pins, |a, b| a || b);
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Xor;
+impl ComponentType for Xor {
+    fn name(&self) -> String {
+        "wireflow:xor".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Logic gate xor".to_string()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        binary_logicgate_pins().to_vec()
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
+        binary_logicgate_compute(pins, |a, b| a ^ b);
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Not;
+impl ComponentType for Not {
+    fn name(&self) -> String {
+        "wireflow:not".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Logic gate not".to_string()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        vec![
+            Pin::new("IN", PinMode::Input, NonZeroUsize::new(1).unwrap()),
+            Pin::new("OUT", PinMode::Output, NonZeroUsize::new(1).unwrap())
+        ]
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
+        pins.get_mut("IN").unwrap().value = {
+            pins.get("OUT").unwrap().value
+                .iter().map(|b| !b).collect()
+        };
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Nand;
+impl ComponentType for Nand {
+    fn name(&self) -> String {
+        "wireflow:nand".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Logic gate nand".to_string()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        binary_logicgate_pins().to_vec()
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
+        binary_logicgate_compute(pins, |a, b| !(a && b));
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Nor;
+impl ComponentType for Nor {
+    fn name(&self) -> String {
+        "wireflow:nor".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Logic gate nor".to_string()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        binary_logicgate_pins().to_vec()
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
+        binary_logicgate_compute(pins, |a, b| !(a || b));
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Xnor;
+impl ComponentType for Xnor {
+    fn name(&self) -> String {
+        "wireflow:xnor".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Logic gate xnor".to_string()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        binary_logicgate_pins().to_vec()
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
+        binary_logicgate_compute(pins, |a, b| !(a ^ b));
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Clock {
+    pub frequency: Duration,
+    pub start_time: Option<Instant>,
+}
+
+impl Clock {
+    pub fn new(freq_hertz: f32) -> Self {
+        Self {
+            frequency: Duration::from_secs_f32(1.0 / freq_hertz),
+            start_time: None
+        }
+    }
+}
+
+impl ComponentType for Clock {
+    fn name(&self) -> String {
+        format!("wireflow:clock:{0}hz", 1.0 / self.frequency.as_secs_f32())
+    }
+
+    fn description(&self) -> String {
+        "Clock".to_string()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        vec![Pin::new("OUT", PinMode::Output, NonZeroUsize::new(1).unwrap())]
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
+        if let Some(start_time) = self.start_time {
+            if start_time.elapsed() >= self.frequency {
+                let value = {
+                    pins.get("OUT").unwrap().value
+                        .iter().map(|b| !b).collect()
+                };
+                pins.get_mut("OUT").unwrap().value = value;
+                self.start_time = Some(Instant::now());
+            }
+            return;
+        }
+
+        self.start_time = Some(Instant::now());
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct In;
+impl ComponentType for In {
+    fn name(&self) -> String {
+        "wireflow:in".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Special component that mark an input".to_string()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        vec![Pin::new("OUT", PinMode::Output, NonZeroUsize::new(1).unwrap())]
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {}
+}
+
+#[derive(Debug, Default)]
+pub struct Out;
+impl ComponentType for Out {
+    fn name(&self) -> String {
+        "wireflow:out".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Special component that mark a output".to_string()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        vec![Pin::new("IN", PinMode::Input, NonZeroUsize::new(1).unwrap())]
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {}
+}
+
+#[derive(Debug, Default)]
+struct Compound {
+    pub circuit: Circuit,
+    pub name: String,
+    pub description: String,
+}
+impl ComponentType for Compound {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn description(&self) -> String {
+        self.description.clone()
+    }
+
+    fn default_pins(&self) -> Vec<Pin> {
+        self.circuit.graph.node_weights()
+            .filter(|comp|
+                comp.component_type.as_any().is::<In>()
+                || comp.component_type.as_any().is::<Out>()
+            )
+            .map(|comp| {
+                let pin = comp.pins()[0];
+                return Pin::new(&comp.name, pin.mode, pin.channels);
+            }).collect::<Vec<_>>()
+    }
+
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
+        // Set inner component inputs as inputs
+        for comp in self.circuit.graph.node_weights_mut()
+            .filter(|comp| comp.component_type.as_any().is::<In>()) {
+            comp.pins_mut()[0].value = pins.get(&comp.name).unwrap().value.clone();
+        }
+
+        Simulation::step_until_stable(&mut self.circuit);
+
+        // Set outputs as inner component outputs
+        for comp in self.circuit.graph.node_weights()
+            .filter(|comp| comp.component_type.as_any().is::<Out>()) {
+            pins.get_mut(&comp.name).unwrap().value = comp.pins()[0].value.clone();
         }
     }
 }
