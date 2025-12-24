@@ -152,7 +152,7 @@ impl Simulation {
             let output_before = {
                 circuit.graph[node_index].pins().iter()
                     .filter(|pin| matches!(pin.mode, PinMode::Output))
-                    .map(|pin| (pin.id.clone(), pin.value.clone()))
+                    .map(|pin| (pin.name.clone(), pin.value.clone()))
                     .collect::<HashMap<_, _>>()
             };
 

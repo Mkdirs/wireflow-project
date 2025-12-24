@@ -1,9 +1,7 @@
-use std::any::{Any, TypeId};
+use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::marker::PhantomData;
 use std::num::NonZeroUsize;
-use std::ops::Deref;
 use std::time::{Duration, Instant};
 use crate::{Circuit, Simulation};
 
@@ -54,7 +52,7 @@ impl dyn ComponentType {
 
 impl Component {
     /// Constructs a new [Component] from the given descriptor [T]
-    fn new<T: ComponentType+Default+'static>(id: &str) -> Self
+    pub fn new<T: ComponentType+Default+'static>(id: &str) -> Self
     {
         let comp = Box::new(T::default());
         let pins:HashMap<String, Pin> = HashMap::from_iter(
@@ -174,8 +172,8 @@ fn binary_logicgate_compute(pins: &mut HashMap<String,Pin>, f:impl Fn(bool, bool
 }
 
 #[derive(Debug, Default)]
-pub struct And;
-impl ComponentType for And {
+pub struct AndGate;
+impl ComponentType for AndGate {
     fn name(&self) -> String {
         "wireflow:and".to_string()
     }
@@ -194,8 +192,8 @@ impl ComponentType for And {
 }
 
 #[derive(Debug, Default)]
-pub struct Or;
-impl ComponentType for Or {
+pub struct OrGate;
+impl ComponentType for OrGate {
     fn name(&self) -> String {
         "wireflow:or".to_string()
     }
@@ -214,8 +212,8 @@ impl ComponentType for Or {
 }
 
 #[derive(Debug, Default)]
-pub struct Xor;
-impl ComponentType for Xor {
+pub struct XorGate;
+impl ComponentType for XorGate {
     fn name(&self) -> String {
         "wireflow:xor".to_string()
     }
@@ -234,8 +232,8 @@ impl ComponentType for Xor {
 }
 
 #[derive(Debug, Default)]
-pub struct Not;
-impl ComponentType for Not {
+pub struct NotGate;
+impl ComponentType for NotGate {
     fn name(&self) -> String {
         "wireflow:not".to_string()
     }
@@ -252,16 +250,16 @@ impl ComponentType for Not {
     }
 
     fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
-        pins.get_mut("IN").unwrap().value = {
-            pins.get("OUT").unwrap().value
+        pins.get_mut("OUT").unwrap().value = {
+            pins.get("IN").unwrap().value
                 .iter().map(|b| !b).collect()
         };
     }
 }
 
 #[derive(Debug, Default)]
-pub struct Nand;
-impl ComponentType for Nand {
+pub struct NandGate;
+impl ComponentType for NandGate {
     fn name(&self) -> String {
         "wireflow:nand".to_string()
     }
@@ -280,8 +278,8 @@ impl ComponentType for Nand {
 }
 
 #[derive(Debug, Default)]
-pub struct Nor;
-impl ComponentType for Nor {
+pub struct NorGate;
+impl ComponentType for NorGate {
     fn name(&self) -> String {
         "wireflow:nor".to_string()
     }
@@ -300,8 +298,8 @@ impl ComponentType for Nor {
 }
 
 #[derive(Debug, Default)]
-pub struct Xnor;
-impl ComponentType for Xnor {
+pub struct XnorGate;
+impl ComponentType for XnorGate {
     fn name(&self) -> String {
         "wireflow:xnor".to_string()
     }
