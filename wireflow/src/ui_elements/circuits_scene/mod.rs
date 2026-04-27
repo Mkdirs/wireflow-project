@@ -1,18 +1,21 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
 use eframe::egui::{Align, Align2, Button, CentralPanel, Color32, Frame, Grid, Id, Key, LayerId, Layout, Modifiers, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, ScrollArea, Sense, SidePanel, Stroke, Style, TextEdit, TopBottomPanel, Ui, Vec2};
-use circuit_sim::{Circuit, Simulation};
-use circuit_sim::component::{describe_pin, Component, ComponentDescriptor, ComponentType, PinMode};
+use circuit_sim::{Circuit, PlayState};
+use circuit_sim::component::{Component, ComponentType, PinMode};
 use crate::AppState;
 use crate::ui_elements::{circuits};
+use crate::ui_elements::circuits::ComponentPinEvent;
 
 #[derive(Debug)]
 pub struct CircuitsScene {
-    pub simulation: Arc<Mutex<Simulation>>,
+    circuit: Arc<Mutex<Circuit>>,
     component_wiring: ComponentWiringProcess,
     components_prompt: ComponentsPrompt,
     last_mouse_pos: Pos2,
+    components_position: HashMap<String, Pos2>,
+    pins_position: HashMap<String, Pos2>,
 }
 
 #[derive(Debug, Default)]
@@ -33,17 +36,18 @@ struct ComponentsPrompt {
 impl Default for CircuitsScene {
     fn default() -> Self {
         Self {
-            simulation: Arc::new(Mutex::new(Simulation::default())),
+            circuit: Arc::new(Mutex::new(Circuit::default())),
             component_wiring: ComponentWiringProcess::default(),
             last_mouse_pos: Pos2::ZERO,
             components_prompt: ComponentsPrompt::default(),
+            components_position: HashMap::new(),
+            pins_position: HashMap::new(),
         }
     }
 }
 
 impl CircuitsScene {
     pub fn show(&mut self, state: &mut AppState, rect: &mut Rect, ui: &mut Ui) {
-
         let scene_res = self.render_scene(ui, rect);
 
         Popup::new(Id::new("scene_float_top"), ui.ctx().clone(), PopupAnchor::from(scene_res.rect), ui.layer_id())
@@ -94,26 +98,30 @@ impl CircuitsScene {
                     .show(ui, |ui| {
                         ui.set_min_height(300.0);
 
-                        let components = state.registries.components_registry
+                        let components = state.plugins
                             .iter()
-                            .filter(|(id, _)| id.contains(&search))
+                            .map(|plugin| &plugin.components)
+                            .flat_map(|comps| comps.iter())
+                            .filter(|comp| {
+                                let comp_type = comp.1.lock().unwrap();
+                                comp_type.name().contains(&search)
+                            })
                             .collect::<Vec<_>>();
 
                         if !components.is_empty() {
-                            for (id, comp_type) in components {
+                            for (name, comp_type) in components {
                                 if ui.add(
-                                    Button::new(format!("{id}"))
+                                    Button::new(format!("{name}"))
                                         .fill(Color32::TRANSPARENT)
                                 ).clicked() {
                                     {
-                                        let mut sim = self.simulation.lock().unwrap();
-                                        let node_id = format!("{}{}", id, sim.circuit.graph.node_count());
-                                        let mut comp = Component::new(&node_id, comp_type.clone());
+                                        let mut circuit = self.circuit.lock().unwrap();
+                                        let node_id = format!("comp#{}", circuit.graph.node_count());
+                                        let comp = Component::new(&node_id, comp_type.clone());
                                         let pos = self.last_mouse_pos;
-                                        comp.x = pos.x;
-                                        comp.y = pos.y;
+                                        self.components_position.insert(node_id.clone(), pos);
 
-                                        sim.circuit.add(comp);
+                                        circuit.add(&node_id, comp);
 
                                         self.components_prompt = ComponentsPrompt::default();
                                     }
@@ -151,8 +159,8 @@ impl CircuitsScene {
                         self.render_components(ui);
                         self.render_connexions(ui);
 
-                        let sim_clone = self.simulation.clone();
-                        let mut simulation = sim_clone.lock().unwrap();
+                        let circuit_clone = self.circuit.clone();
+                        let mut circuit = circuit_clone.lock().unwrap();
 
                         if self.component_wiring.begining() {
                             if ui.response().clicked() {
@@ -160,18 +168,11 @@ impl CircuitsScene {
                                 return;
                             }
                             let (start_comp_id, start_pin_id) = self.component_wiring.start().unwrap();
-                            let (start_x, start_y) = {
-                                let pin = simulation.circuit.get(&start_comp_id)
-                                    .unwrap()
-                                    .get(&start_pin_id).unwrap();
-
-                                (pin.x, pin.y)
-                            };
+                            let start = self.pins_position.get(&format!("{start_comp_id}.{start_pin_id}")).unwrap();
                             let painter = ui.painter();
-                            let start = Pos2::new(start_x, start_y);
 
                             painter.line_segment(
-                                [start, self.last_mouse_pos],
+                                [*start, self.last_mouse_pos],
                                 Stroke::new(circuits::STROKE_SIZE, Color32::WHITE)
                             );
 
@@ -179,7 +180,7 @@ impl CircuitsScene {
                             let (start_comp_id, start_pin_id) = self.component_wiring.start().unwrap();
                             let (end_comp_id, end_pin_id) = self.component_wiring.end().unwrap();
 
-                            simulation.circuit.wire(
+                            circuit.wire(
                                 (&start_comp_id, &start_pin_id),
                                 (&end_comp_id, &end_pin_id)
                             );
@@ -191,74 +192,80 @@ impl CircuitsScene {
             }).response
     }
     fn render_components(&mut self, ui: &mut Ui) {
-        let sim_clone = self.simulation.clone();
-        let mut simulation = sim_clone.lock().unwrap();
+        let circuit_clone = self.circuit.clone();
+        let mut circuit = circuit_clone.lock().unwrap();
 
-        for node_ind in simulation.circuit.graph.node_indices() {
-            let comp = simulation.circuit.graph
+        for node_ind in circuit.graph.node_indices() {
+            let comp = circuit.graph
                 .node_weight_mut(node_ind)
                 .unwrap();
 
-            let component_res = circuits::draw(comp, ui);
+            let component_pos = self.components_position.get_mut(&comp.id)
+                .unwrap();
+            let (pin_response, response) = circuits::draw(comp, *component_pos, ui);
 
-            if component_res.dragged() {
-                comp.x += component_res.drag_delta().x;
-                comp.y += component_res.drag_delta().y;
+            for (pin_name, pin_pos) in pin_response.pins_position {
+                self.pins_position.insert(format!("{}.{pin_name}", comp.id), pin_pos);
             }
 
-            if let Some(mouse_pos) = component_res.hover_pos() {
+            if response.dragged() {
+                let drag_delta = response.drag_delta();
+                *component_pos = *component_pos+drag_delta;
+            }
+
+            if let Some(mouse_pos) = response.hover_pos() {
                 self.last_mouse_pos = mouse_pos;
             }
 
-            for pin in comp.pins() {
-                let pos = Pos2::new(pin.x, pin.y);
-                let pin_rect = Rect::from_center_size(pos, Vec2::splat(8.0));
-                let pin_response = ui.interact(
-                    pin_rect,
-                    Id::from(format!("{cmp}.{pin_id}", cmp=comp.id, pin_id=pin.id)),
-                    Sense::hover() | Sense::click()
-                );
+            if let Some(interaction) = pin_response.interaction {
+                let pin = comp.get(&interaction.pin_name).unwrap();
+                let pos = self.pins_position.get(&format!("{}.{}", comp.id, interaction.pin_name)).unwrap();
+                
+                match interaction.event {
+                    ComponentPinEvent::HOVERED => {
+                        let painter = ui.painter();
+                        painter.circle_filled(
+                            *pos,
+                            4.0,
+                            Color32::GOLD
+                        );
+                    },
+                    ComponentPinEvent::CLICKED if !self.component_wiring.just_finished() => {
+                        self.component_wiring.target(&comp.id, &pin.name);
+                    },
 
-                if pin_response.hovered() {
-                    let painter = ui.painter();
-                    painter.circle_filled(
-                        pos,
-                        4.0,
-                        Color32::GOLD
-                    );
-                }
-
-                if pin_response.clicked() {
-                    if !self.component_wiring.just_finished() {
-                        self.component_wiring.target(&comp.id, &pin.id);
-                    }
+                    _ => {}
                 }
             }
+
         }
     }
 
     fn render_connexions(&mut self, ui: &mut Ui) {
-        let sim_clone = self.simulation.clone();
-        let mut simulation = sim_clone.lock().unwrap();
+        let circuit_clone = self.circuit.clone();
+        let circuit = circuit_clone.lock().unwrap();
 
-        for edge_ind in simulation.circuit.graph.edge_indices() {
+        for edge_ind in circuit.graph.edge_indices() {
             let painter = ui.painter();
-            let (source_pin, target_pin) = simulation.circuit.graph.edge_weight(edge_ind).unwrap();
-            let (source, target) = simulation.circuit.graph.edge_endpoints(edge_ind).unwrap();
+            let (source_pin, target_pin) = circuit.graph.edge_weight(edge_ind).unwrap();
+            let (source, target) = circuit.graph.edge_endpoints(edge_ind).unwrap();
 
-            let (source_comp, target_comp) = (simulation.circuit.graph.node_weight(source).unwrap(), simulation.circuit.graph.node_weight(target).unwrap());
+            let (source_comp, target_comp) = (circuit.graph.node_weight(source).unwrap(), circuit.graph.node_weight(target).unwrap());
             let (source_pin, target_pin) = (source_comp.get(source_pin).unwrap(), target_comp.get(target_pin).unwrap());
 
+            let source_pos = self.pins_position.get(&format!("{}.{}", source_comp.id, source_pin.name)).unwrap();
+            let target_pos = self.pins_position.get(&format!("{}.{}", target_comp.id, target_pin.name)).unwrap();
 
-            let color = if source_pin.value {
+            // println!("source value: {:?}", source_pin.value);
+            let color = if source_pin.value.iter().fold(false, |acc, e| acc || *e) {
                 Color32::GREEN
-            }else {
+            } else {
                 Color32::WHITE
             };
             painter.line_segment(
                 [
-                    Pos2::new(source_pin.x, source_pin.y + 0.5),
-                    Pos2::new(target_pin.x, target_pin.y + 0.5)
+                    Pos2::new(source_pos.x, source_pos.y + 0.5),
+                    Pos2::new(target_pos.x, target_pos.y + 0.5)
                 ],
                 Stroke::new(circuits::STROKE_SIZE, color)
             );
@@ -266,18 +273,38 @@ impl CircuitsScene {
     }
 
     pub fn is_running(&self) -> bool {
-        self.simulation.lock().unwrap().running
+        self.circuit.lock().unwrap().play_state() == &PlayState::Running
     }
 
     pub fn run(&self) {
-        let simulation = self.simulation.clone();
+        let circuit_clone = self.circuit.clone();
         let _ = thread::spawn(move || {
-            Simulation::run(simulation, || {});
+            let mut circuit_ref = circuit_clone.lock().unwrap();
+            if circuit_ref.simulation.play_state != PlayState::Stopped {
+                return;
+            }
+
+            circuit_ref.simulation.play_state = PlayState::Running;
+            drop(circuit_ref);
+
+            loop {
+                {
+                    let mut circuit_ref = circuit_clone.lock().unwrap();
+                    match circuit_ref.simulation.play_state {
+                        PlayState::Stopped => break,
+                        PlayState::Paused => continue,
+                        _ => circuit_ref.step()
+                    }
+                }
+            }
+            // Circuit::run(circuit);
+            // circuit.lock().unwrap().run();
+            // Simulation::run(simulation, || {});
         });
     }
 
     pub fn stop(&self) {
-        self.simulation.lock().unwrap().running = false;
+        self.circuit.lock().unwrap().stop();
     }
 }
 

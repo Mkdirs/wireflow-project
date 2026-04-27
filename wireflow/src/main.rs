@@ -1,41 +1,30 @@
 
 mod views;
 mod ui_elements;
-mod registry;
 
-use std::time::{Duration, Instant};
 use eframe::{run_native, App, CreationContext, Frame, NativeOptions};
-use eframe::egui::{CentralPanel, Context, IconData, TopBottomPanel, Widget};
-use circuit_sim::component::{Component, ComponentType};
-use crate::registry::{Registries, Registry};
+use eframe::egui::{CentralPanel, Context, IconData, TopBottomPanel};
+use circuit_sim::component::Component;
+use plugin::{Plugin, WIREFLOW};
 use crate::views::{View, ViewId, Workspace};
 
 #[derive(Debug, Default)]
 struct AppState {
     current_view: ViewId,
-    registries: Registries,
+    plugins: Vec<Plugin>,
     workspace_name: String
 }
+
 #[derive(Default)]
 struct Wireflow {
     state: AppState,
     workspace: Workspace,
 }
+
 impl Wireflow {
     pub fn new(cc: &CreationContext<'_>) -> Self {
         let mut wireflow = Wireflow::default();
-        wireflow.state.registries.components_registry = Registry::from([
-            (String::from("wireflow:and"), ComponentType::AND),
-            (String::from("wireflow:or"), ComponentType::OR),
-            (String::from("wireflow:xor"), ComponentType::XOR),
-            (String::from("wireflow:not"), ComponentType::NOT),
-            (String::from("wireflow:nand"), ComponentType::NAND),
-            (String::from("wireflow:nor"), ComponentType::NOR),
-            (String::from("wireflow:xnor"), ComponentType::XNOR),
-            (String::from("wireflow:input"), ComponentType::IO),
-            (String::from("wireflow:output"), ComponentType::IO),
-            (String::from("wireflow:clock"), ComponentType::CLOCK(Instant::now(), Duration::from_secs(1))),
-        ]);
+        wireflow.state.plugins.push(WIREFLOW.to_owned());
 
         wireflow
     }

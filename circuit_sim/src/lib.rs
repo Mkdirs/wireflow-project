@@ -1,32 +1,40 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::thread::JoinHandle;
-use std::time::Duration;
 use petgraph::prelude::*;
-use petgraph::visit::Topo;
 use crate::component::{Component, ComponentType, PinMode};
 
 pub mod component;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Clone)]
+pub enum PlayState {
+    Running,
+    Paused,
+    #[default]
+    Stopped,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SimulationState {
+    to_visit: VecDeque<NodeIndex>,
+    visited: HashSet<NodeIndex>,
+    pub play_state: PlayState,
+
+}
+
+
+
+#[derive(Debug, Default, Clone)]
 pub struct Circuit {
     pub graph: DiGraph<Component, (String, String)>,
     components_id: HashMap<String, NodeIndex>,
     edges_id: HashMap<String, EdgeIndex>,
-}
-
-#[derive(Debug, Default)]
-pub struct Simulation{
-    pub circuit: Circuit,
-    pub running: bool
+    pub simulation: SimulationState
 }
 
 impl Circuit {
-    pub fn add(&mut self, component: Component) {
-        let component_id = component.id.clone();
+    pub fn add(&mut self, id:&str, component: Component) {
         let node_id = self.graph.add_node(component);
-        self.components_id.insert(component_id, node_id);
+        self.components_id.insert(id.to_string(), node_id);
     }
     
     pub fn get(&self, id: &str) -> Option<&Component> {
@@ -42,6 +50,140 @@ impl Circuit {
     pub fn remove(&mut self, id: &str) -> Option<Component> {
         let node_id = self.components_id.remove(id)?;
         self.graph.remove_node(node_id)
+    }
+
+    pub fn play_state(&self) -> &PlayState {
+        &self.simulation.play_state
+    }
+
+    /// Steps until stopped
+    ///
+    /// This will block the thread until the circuit is stopped
+    pub fn run(&mut self) {
+        // let mut circuit_ref = circuit.lock().unwrap();
+        // if circuit_ref.simulation.play_state != PlayState::Stopped {
+        //     return;
+        // }
+        //
+        // circuit_ref.simulation.play_state = PlayState::Running;
+        // drop(circuit_ref);
+        //
+        // loop {
+        //     {
+        //         let mut circuit_ref = circuit.lock().unwrap();
+        //         match circuit_ref.simulation.play_state {
+        //             PlayState::Stopped => break,
+        //             PlayState::Paused => continue,
+        //             _ => circuit_ref.step()
+        //         }
+        //     }
+        // }
+
+        if self.simulation.play_state != PlayState::Stopped {
+            return;
+        }
+        self.simulation.play_state = PlayState::Running;
+
+        while self.simulation.play_state != PlayState::Stopped {
+            if let PlayState::Paused = self.simulation.play_state {
+                continue;
+            }
+
+            self.step();
+        }
+
+        // let mut circuit_ref = circuit.lock().unwrap();
+        // circuit_ref.simulation.to_visit.clear();
+        // circuit_ref.simulation.visited.clear();
+    }
+
+    /// Computes all remaining components once
+    pub fn leap(&mut self) {
+        if self.simulation.play_state != PlayState::Stopped {
+            return;
+        }
+
+        self.simulation.play_state = PlayState::Running;
+
+        if self.simulation.to_visit.is_empty() {
+            self.simulation.to_visit.extend(self.graph.externals(Incoming));
+            self.simulation.visited.clear();
+        }
+
+        while !self.simulation.to_visit.is_empty() {
+            self.step();
+        }
+
+        self.stop();
+    }
+
+    pub fn pause(&mut self) {
+        if let PlayState::Running = self.simulation.play_state {
+            self.simulation.play_state = PlayState::Paused;
+        }
+    }
+
+    pub fn resume(&mut self) {
+        if let PlayState::Paused = self.simulation.play_state {
+            self.simulation.play_state = PlayState::Running;
+        }
+    }
+
+    pub fn stop(&mut self) {
+        if self.simulation.play_state == PlayState::Running
+            || self.simulation.play_state == PlayState::Paused
+        {
+            self.simulation.to_visit.clear();
+            self.simulation.visited.clear();
+            self.simulation.play_state = PlayState::Stopped;
+        }
+    }
+
+    /// Compute the current component and set the inputs of the children
+    pub fn step(&mut self) {
+        if self.simulation.to_visit.is_empty() {
+            self.simulation.to_visit.extend(self.graph.externals(Incoming));
+            self.simulation.visited.clear();
+        }
+
+        if self.simulation.to_visit.is_empty() {
+            return;
+        }
+
+        let node_index = self.simulation.to_visit.pop_front()
+            .expect("to_visit should not be empty");
+        let node = self.graph.node_weight_mut(node_index).unwrap();
+
+        if node.is_dirty {
+            node.compute();
+        }
+
+        let edges = {
+            self.graph.edges_directed(node_index, Outgoing)
+                .map(|edge| {
+                    (
+                        edge.target(),
+                        edge.weight().1.clone(),
+                        self.graph.node_weight(edge.source())
+                            .unwrap()
+                            .get(&edge.weight().0)
+                            .unwrap().value.clone()
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+
+        for (target_id, target_pin, inputs) in edges {
+            let child = self.graph.node_weight_mut(target_id).unwrap();
+
+            child.set(&target_pin, &inputs);
+
+            if !self.simulation.to_visit.contains(&target_id) && !self.simulation.visited.contains(&target_id) {
+                self.simulation.to_visit.push_back(target_id);
+            }
+        }
+
+        self.simulation.visited.insert(node_index);
     }
     
     /// Connect two component
@@ -104,133 +246,6 @@ impl Circuit {
             self.graph.remove_edge(edge_id);
         }
     }
-}
-
-impl Simulation {
-
-    pub fn run(simulation: Arc<Mutex<Simulation>>, step_callback: impl Fn() -> ()) //-> Option<JoinHandle<()>>
-    {
-        let mut sim = simulation.lock().unwrap();
-        if sim.running {
-            return;
-        }
-        
-        sim.running = true;
-        drop(sim);
-        
-        //Some(thread::spawn(move || {
-            loop {
-                {
-                    let mut simulation = simulation.lock().unwrap();
-
-                    if !simulation.running {
-                        break;
-                    }
-
-                    Self::step(&mut simulation.circuit);
-                    step_callback();
-                };
-            }
-        //}))
-    }
-
-    /// Returns `true` if the circuit has any dirty component
-    pub fn step(circuit: &mut Circuit) -> bool {
-        let mut topo = Topo::new(&circuit.graph);
-
-        while let Some(node_index) = topo.next(&circuit.graph) {
-            let execute = {
-                let node = &circuit.graph[node_index];
-                true
-                // node.is_dirty || matches!(node.node_type, ComponentType::CLOCK(_, _))
-            };
-
-            if !execute {
-                continue;
-            }
-
-            let output_before = {
-                circuit.graph[node_index].pins().iter()
-                    .filter(|pin| matches!(pin.mode, PinMode::Output))
-                    .map(|pin| (pin.name.clone(), pin.value.clone()))
-                    .collect::<HashMap<_, _>>()
-            };
-
-            circuit.graph.node_weight_mut(node_index).unwrap().compute();
-
-            let updates = circuit.graph.edges(node_index)
-                .map(|edge| {
-                    let target_index = edge.target();
-                    let (source_pin_id, target_pin_id) = edge.weight();
-
-                    let source_node = &circuit.graph[node_index];
-
-                    let new_value = source_node.get(source_pin_id)
-                        .map(|pin| pin.value.clone())
-                        .unwrap_or_default();
-
-                    let old_value = output_before.get(source_pin_id)
-                        .cloned()
-                        .unwrap_or_default();
-
-                    (target_index, target_pin_id.clone(), new_value, old_value)
-                })
-                .collect::<Vec<_>>();
-
-            for (target_index, target_pin_id, new_value, old_value) in updates {
-                if new_value != old_value {
-                    let target_node = circuit.graph.node_weight_mut(target_index).unwrap();
-                    target_node.set(&target_pin_id, new_value.as_slice());
-                }
-            }
-        }
-
-        circuit.graph.node_weights().any(|node| node.is_dirty)
-    }
-
-    pub fn step_until_stable(circuit: &mut Circuit) {
-        loop {
-            if !Simulation::step(circuit) {break;}
-        }
-    }
-
-    pub async fn step_async(circuit: &mut Circuit) {
-        Self::step(circuit);
-    }
-    
-    pub async fn step_until_stable_async(circuit: &mut Circuit) {
-        Self::step_until_stable(circuit);
-    }
-
-    // pub fn run_clocks(simulation: Arc<Mutex<Simulation>>) -> JoinHandle<()> {
-    //     thread::spawn(move || {
-    //         loop {
-    //             {
-    //                 let mut simulation = simulation.lock().unwrap();
-    //                 Self::handle_clocks(&mut simulation.circuit);
-    //             };
-    //         }
-    //     })
-    // }
-    // 
-    // fn handle_clocks(circuit: &mut Circuit) {
-    //     let mut topo = Topo::new(&*circuit);
-    // 
-    //     while let Some(node_index) = topo.next(&*circuit) {
-    //         let component = circuit.node_weight_mut(node_index).unwrap();
-    //         match &mut component.node_type {
-    //             ComponentType::CLOCK(_, _) => {
-    //                 component.compute();
-    //             },
-    // 
-    //             ComponentType::COMPOUND(circuit, _) => {
-    //                 Self::handle_clocks(circuit);
-    //             }
-    // 
-    //             _ => continue
-    //         }
-    //     }
-    // }
 }
 
 

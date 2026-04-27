@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 circuit_sim = {path = "../circuit_sim"}
+plugin = {path = "../plugin"}
 eframe = "0.32.1"
 log = "0.4.27"
 

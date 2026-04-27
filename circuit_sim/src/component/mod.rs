@@ -1,21 +1,22 @@
 use std::any::Any;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
-use crate::{Circuit, Simulation};
+use crate::Circuit;
 
 /// A Component receives inputs and gives outputs
 ///
 /// e.g: [And](logic::And)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Component {
     pub id: String,
     pub name: String,
-    pub component_type: Box<dyn ComponentType>,
+    pub component_type: Arc<Mutex<dyn ComponentType>>,
     pub is_dirty: bool,
-    pub x: f32,
-    pub y: f32,
     pins: HashMap<String, Pin>
 }
 
@@ -28,8 +29,6 @@ pub struct Pin {
     pub mode: PinMode,
     pub channels: NonZeroUsize,
     pub value: Vec<bool>,
-    pub x: f32,
-    pub y: f32,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -38,11 +37,13 @@ pub enum PinMode {
     Output
 }
 
-pub trait ComponentType : Any+Debug {
+
+
+pub trait ComponentType : Any+Debug+Send+Sync {
     fn name(&self) -> String;
     fn description(&self) -> String;
     fn default_pins(&self) -> Vec<Pin>;
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>);
+    fn compute(&mut self, pins: &mut HashMap<String, Pin>) -> bool;
 }
 impl dyn ComponentType {
     pub fn as_any(&self) -> &dyn Any {
@@ -52,27 +53,29 @@ impl dyn ComponentType {
 
 impl Component {
     /// Constructs a new [Component] from the given descriptor [T]
-    pub fn new<T: ComponentType+Default+'static>(id: &str) -> Self
+    pub fn new(id: &str, component: Arc<Mutex<dyn ComponentType>>) -> Self
     {
-        let comp = Box::new(T::default());
-        let pins:HashMap<String, Pin> = HashMap::from_iter(
-            comp.default_pins().into_iter()
-                .map(|pin| (pin.name.clone(), pin))
-                .collect::<Vec<_>>()
-        );
+        
+        let pins:HashMap<String, Pin> = {
+            let component = component.lock().unwrap();
+            HashMap::from_iter(
+                component.default_pins().into_iter()
+                    .map(|pin| (pin.name.clone(), pin))
+                    .collect::<Vec<_>>()
+            )
+        };
         Self {
             id: id.to_string(),
             name: String::new(),
-            component_type: comp,
+            component_type: component,
             pins,
-            is_dirty: false,
-            x: 0.0,
-            y: 0.0
+            is_dirty: true,
         }
     }
 
     pub fn compute(&mut self) {
-        self.component_type.compute(&mut self.pins);
+        let mut comp = self.component_type.lock().unwrap();
+        self.is_dirty = comp.compute(&mut self.pins);
     }
 
     /// Sets a pin's value
@@ -139,8 +142,6 @@ impl Pin {
             mode,
             channels,
             value: (0..channels.get()).map(|_| false).collect(),
-            x: 0.0,
-            y: 0.0
         }
     }
 
@@ -150,294 +151,5 @@ impl Pin {
 
     pub fn low(&mut self) {
         self.value = (0..self.channels.get()).map(|_| false).collect()
-    }
-}
-
-#[inline]
-fn binary_logicgate_pins() -> [Pin;3] {
-    [
-        Pin::new("A", PinMode::Input, NonZeroUsize::new(1).unwrap()),
-        Pin::new("B", PinMode::Input, NonZeroUsize::new(1).unwrap()),
-        Pin::new("OUT", PinMode::Output, NonZeroUsize::new(1).unwrap()),
-    ]
-}
-
-#[inline]
-fn binary_logicgate_compute(pins: &mut HashMap<String,Pin>, f:impl Fn(bool, bool)->bool) {
-    pins.get_mut("OUT").unwrap().value = {
-        let a = pins.get("A").unwrap();
-        let b = pins.get("B").unwrap();
-        a.value.iter().zip(b.value.iter()).map(|(&a, &b)| f(a,b)).collect()
-    };
-}
-
-#[derive(Debug, Default)]
-pub struct AndGate;
-impl ComponentType for AndGate {
-    fn name(&self) -> String {
-        "wireflow:and".to_string()
-    }
-
-    fn description(&self) -> String {
-        "Logic gate and".to_string()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        binary_logicgate_pins().to_vec()
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
-        binary_logicgate_compute(pins, |a, b| a && b);
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct OrGate;
-impl ComponentType for OrGate {
-    fn name(&self) -> String {
-        "wireflow:or".to_string()
-    }
-
-    fn description(&self) -> String {
-        "Logic gate or".to_string()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        binary_logicgate_pins().to_vec()
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
-        binary_logicgate_compute(pins, |a, b| a || b);
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct XorGate;
-impl ComponentType for XorGate {
-    fn name(&self) -> String {
-        "wireflow:xor".to_string()
-    }
-
-    fn description(&self) -> String {
-        "Logic gate xor".to_string()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        binary_logicgate_pins().to_vec()
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
-        binary_logicgate_compute(pins, |a, b| a ^ b);
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct NotGate;
-impl ComponentType for NotGate {
-    fn name(&self) -> String {
-        "wireflow:not".to_string()
-    }
-
-    fn description(&self) -> String {
-        "Logic gate not".to_string()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        vec![
-            Pin::new("IN", PinMode::Input, NonZeroUsize::new(1).unwrap()),
-            Pin::new("OUT", PinMode::Output, NonZeroUsize::new(1).unwrap())
-        ]
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
-        pins.get_mut("OUT").unwrap().value = {
-            pins.get("IN").unwrap().value
-                .iter().map(|b| !b).collect()
-        };
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct NandGate;
-impl ComponentType for NandGate {
-    fn name(&self) -> String {
-        "wireflow:nand".to_string()
-    }
-
-    fn description(&self) -> String {
-        "Logic gate nand".to_string()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        binary_logicgate_pins().to_vec()
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
-        binary_logicgate_compute(pins, |a, b| !(a && b));
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct NorGate;
-impl ComponentType for NorGate {
-    fn name(&self) -> String {
-        "wireflow:nor".to_string()
-    }
-
-    fn description(&self) -> String {
-        "Logic gate nor".to_string()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        binary_logicgate_pins().to_vec()
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
-        binary_logicgate_compute(pins, |a, b| !(a || b));
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct XnorGate;
-impl ComponentType for XnorGate {
-    fn name(&self) -> String {
-        "wireflow:xnor".to_string()
-    }
-
-    fn description(&self) -> String {
-        "Logic gate xnor".to_string()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        binary_logicgate_pins().to_vec()
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
-        binary_logicgate_compute(pins, |a, b| !(a ^ b));
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Clock {
-    pub frequency: Duration,
-    pub start_time: Option<Instant>,
-}
-
-impl Clock {
-    pub fn new(freq_hertz: f32) -> Self {
-        Self {
-            frequency: Duration::from_secs_f32(1.0 / freq_hertz),
-            start_time: None
-        }
-    }
-}
-
-impl ComponentType for Clock {
-    fn name(&self) -> String {
-        format!("wireflow:clock:{0}hz", 1.0 / self.frequency.as_secs_f32())
-    }
-
-    fn description(&self) -> String {
-        "Clock".to_string()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        vec![Pin::new("OUT", PinMode::Output, NonZeroUsize::new(1).unwrap())]
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
-        if let Some(start_time) = self.start_time {
-            if start_time.elapsed() >= self.frequency {
-                let value = {
-                    pins.get("OUT").unwrap().value
-                        .iter().map(|b| !b).collect()
-                };
-                pins.get_mut("OUT").unwrap().value = value;
-                self.start_time = Some(Instant::now());
-            }
-            return;
-        }
-
-        self.start_time = Some(Instant::now());
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct In;
-impl ComponentType for In {
-    fn name(&self) -> String {
-        "wireflow:in".to_string()
-    }
-
-    fn description(&self) -> String {
-        "Special component that mark an input".to_string()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        vec![Pin::new("OUT", PinMode::Output, NonZeroUsize::new(1).unwrap())]
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {}
-}
-
-#[derive(Debug, Default)]
-pub struct Out;
-impl ComponentType for Out {
-    fn name(&self) -> String {
-        "wireflow:out".to_string()
-    }
-
-    fn description(&self) -> String {
-        "Special component that mark a output".to_string()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        vec![Pin::new("IN", PinMode::Input, NonZeroUsize::new(1).unwrap())]
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {}
-}
-
-#[derive(Debug, Default)]
-struct Compound {
-    pub circuit: Circuit,
-    pub name: String,
-    pub description: String,
-}
-impl ComponentType for Compound {
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    fn description(&self) -> String {
-        self.description.clone()
-    }
-
-    fn default_pins(&self) -> Vec<Pin> {
-        self.circuit.graph.node_weights()
-            .filter(|comp|
-                comp.component_type.as_any().is::<In>()
-                || comp.component_type.as_any().is::<Out>()
-            )
-            .map(|comp| {
-                let pin = comp.pins()[0];
-                return Pin::new(&comp.name, pin.mode, pin.channels);
-            }).collect::<Vec<_>>()
-    }
-
-    fn compute(&mut self, pins: &mut HashMap<String, Pin>) {
-        // Set inner component inputs as inputs
-        for comp in self.circuit.graph.node_weights_mut()
-            .filter(|comp| comp.component_type.as_any().is::<In>()) {
-            comp.pins_mut()[0].value = pins.get(&comp.name).unwrap().value.clone();
-        }
-
-        Simulation::step_until_stable(&mut self.circuit);
-
-        // Set outputs as inner component outputs
-        for comp in self.circuit.graph.node_weights()
-            .filter(|comp| comp.component_type.as_any().is::<Out>()) {
-            pins.get_mut(&comp.name).unwrap().value = comp.pins()[0].value.clone();
-        }
     }
 }
