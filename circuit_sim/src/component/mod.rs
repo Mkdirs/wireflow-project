@@ -40,7 +40,6 @@ pub enum PinMode {
 
 
 pub trait ComponentType : Any+Debug+Send+Sync {
-    fn name(&self) -> String;
     fn description(&self) -> String;
     fn default_pins(&self) -> Vec<Pin>;
     fn compute(&mut self, pins: &mut HashMap<String, Pin>) -> bool;
@@ -53,7 +52,7 @@ impl dyn ComponentType {
 
 impl Component {
     /// Constructs a new [Component] from the given descriptor [T]
-    pub fn new(id: &str, component: Arc<Mutex<dyn ComponentType>>) -> Self
+    pub fn new(id: &str, name: String, component: Arc<Mutex<dyn ComponentType>>) -> Self
     {
         
         let pins:HashMap<String, Pin> = {
@@ -66,7 +65,7 @@ impl Component {
         };
         Self {
             id: id.to_string(),
-            name: String::new(),
+            name,
             component_type: component,
             pins,
             is_dirty: true,

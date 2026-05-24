@@ -28,10 +28,6 @@ fn binary_logicgate_compute(pins: &mut HashMap<String,Pin>, f:impl Fn(bool, bool
 #[derive(Debug, Default)]
 pub struct AndGate;
 impl ComponentType for AndGate {
-    fn name(&self) -> String {
-        "and".to_string()
-    }
-
     fn description(&self) -> String {
         "Logic gate and".to_string()
     }
@@ -48,10 +44,6 @@ impl ComponentType for AndGate {
 #[derive(Debug, Default)]
 pub struct OrGate;
 impl ComponentType for OrGate {
-    fn name(&self) -> String {
-        "or".to_string()
-    }
-
     fn description(&self) -> String {
         "Logic gate or".to_string()
     }
@@ -68,10 +60,6 @@ impl ComponentType for OrGate {
 #[derive(Debug, Default)]
 pub struct XorGate;
 impl ComponentType for XorGate {
-    fn name(&self) -> String {
-        "xor".to_string()
-    }
-
     fn description(&self) -> String {
         "Logic gate xor".to_string()
     }
@@ -88,10 +76,6 @@ impl ComponentType for XorGate {
 #[derive(Debug, Default)]
 pub struct NotGate;
 impl ComponentType for NotGate {
-    fn name(&self) -> String {
-        "not".to_string()
-    }
-
     fn description(&self) -> String {
         "Logic gate not".to_string()
     }
@@ -115,10 +99,6 @@ impl ComponentType for NotGate {
 #[derive(Debug, Default)]
 pub struct NandGate;
 impl ComponentType for NandGate {
-    fn name(&self) -> String {
-        "nand".to_string()
-    }
-
     fn description(&self) -> String {
         "Logic gate nand".to_string()
     }
@@ -135,10 +115,6 @@ impl ComponentType for NandGate {
 #[derive(Debug, Default)]
 pub struct NorGate;
 impl ComponentType for NorGate {
-    fn name(&self) -> String {
-        "nor".to_string()
-    }
-
     fn description(&self) -> String {
         "Logic gate nor".to_string()
     }
@@ -155,10 +131,6 @@ impl ComponentType for NorGate {
 #[derive(Debug, Default)]
 pub struct XnorGate;
 impl ComponentType for XnorGate {
-    fn name(&self) -> String {
-        "xnor".to_string()
-    }
-
     fn description(&self) -> String {
         "Logic gate xnor".to_string()
     }
@@ -194,10 +166,6 @@ impl Default for Clock {
 }
 
 impl ComponentType for Clock {
-    fn name(&self) -> String {
-        format!("clock:{0:#.2}hz", 1.0 / self.frequency.as_secs_f32())
-    }
-
     fn description(&self) -> String {
         "Clock".to_string()
     }
@@ -227,10 +195,6 @@ impl ComponentType for Clock {
 #[derive(Debug, Default)]
 pub struct In;
 impl ComponentType for In {
-    fn name(&self) -> String {
-        "in".to_string()
-    }
-
     fn description(&self) -> String {
         "Special component that mark an input".to_string()
     }
@@ -245,10 +209,6 @@ impl ComponentType for In {
 #[derive(Debug, Default)]
 pub struct Out;
 impl ComponentType for Out {
-    fn name(&self) -> String {
-        "out".to_string()
-    }
-
     fn description(&self) -> String {
         "Special component that mark a output".to_string()
     }
@@ -267,10 +227,6 @@ pub struct Compound {
     pub description: String,
 }
 impl ComponentType for Compound {
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-
     fn description(&self) -> String {
         self.description.clone()
     }

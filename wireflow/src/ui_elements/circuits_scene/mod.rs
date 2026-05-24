@@ -102,10 +102,7 @@ impl CircuitsScene {
                             .iter()
                             .map(|plugin| &plugin.components)
                             .flat_map(|comps| comps.iter())
-                            .filter(|comp| {
-                                let comp_type = comp.1.lock().unwrap();
-                                comp_type.name().contains(&search)
-                            })
+                            .filter(|(name, _)| name.contains(&search))
                             .collect::<Vec<_>>();
 
                         if !components.is_empty() {
@@ -117,7 +114,7 @@ impl CircuitsScene {
                                     {
                                         let mut circuit = self.circuit.lock().unwrap();
                                         let node_id = format!("comp#{}", circuit.graph.node_count());
-                                        let comp = Component::new(&node_id, comp_type.clone());
+                                        let comp = Component::new(&node_id, name.clone(), comp_type.clone());
                                         let pos = self.last_mouse_pos;
                                         self.components_position.insert(node_id.clone(), pos);
 

@@ -2,9 +2,9 @@ use eframe::egui::{Color32, Id, Painter, Pos2, Rect, Response, Sense, Stroke, St
 use eframe::epaint::{CornerRadiusF32, QuadraticBezierShape};
 use circuit_sim::component::{Component, Pin};
 use plugin::components::{AndGate, NandGate, NorGate, NotGate, OrGate, XnorGate, XorGate};
-use crate::ui_elements::circuits::{ComponentPinEvent, ComponentPinInteraction, ComponentPinResponse, ComponentWidget, ComponentWidgetResponse, INPUT_SPACING, PIN_LENGTH, STROKE_SIZE};
+use crate::ui_elements::circuits::{get_pin_interaction, ComponentPinEvent, ComponentPinInteraction, ComponentPinResponse, ComponentWidget, ComponentWidgetResponse, INPUT_SPACING, PIN_LENGTH, STROKE_SIZE};
 
-const LOGIC_GATE_SIZE:Vec2 = Vec2::new(56.0, 33.0);
+pub(crate) const LOGIC_GATE_SIZE:Vec2 = Vec2::new(56.0, 33.0);
 
 pub(crate) struct LogicGatesWidget<'a>{
     pub component: &'a Component,
@@ -61,7 +61,7 @@ impl<'a> ComponentWidget for LogicGatesWidget<'a> {
     }
 }
 
-pub fn draw_and_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
+fn draw_and_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
     let mut corner_radius = CornerRadiusF32::same(0.0);
     corner_radius.ne = 50.0;
     corner_radius.se = 50.0;
@@ -112,11 +112,7 @@ pub fn draw_and_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos
     response
 }
 
-pub fn draw_or_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
-    let mut corner_radius = CornerRadiusF32::same(0.0);
-    corner_radius.ne = 50.0;
-    corner_radius.se = 50.0;
-
+fn draw_or_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
     let color = Color32::WHITE;
 
     let mut inputs = component.inputs();
@@ -168,7 +164,7 @@ pub fn draw_or_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2
     response
 }
 
-pub fn draw_not_gate(ui: &Ui, component: &Component, painter: &Painter, rect: &Rect) -> ComponentPinResponse {
+fn draw_not_gate(ui: &Ui, component: &Component, painter: &Painter, rect: &Rect) -> ComponentPinResponse {
     let color = Color32::WHITE;
 
     let mut inputs = component.inputs();
@@ -198,8 +194,6 @@ pub fn draw_not_gate(ui: &Ui, component: &Component, painter: &Painter, rect: &R
     painter.line_segment([rect.left_top()+Vec2::RIGHT*PIN_LENGTH, rect.right_center()-Vec2::RIGHT*PIN_LENGTH], Stroke::new(STROKE_SIZE, color));
     painter.line_segment([rect.left_bottom()+Vec2::RIGHT*PIN_LENGTH, rect.right_center()-Vec2::RIGHT*PIN_LENGTH], Stroke::new(STROKE_SIZE, color));
 
-    painter.circle_filled(rect.right_center()-Vec2::RIGHT*PIN_LENGTH, STROKE_SIZE+1.5, color);
-
     let output = component.get("OUT").unwrap();
     painter.hline(rect.right()-PIN_LENGTH..=rect.right(), rect.center().y, Stroke::new(
         STROKE_SIZE,
@@ -210,6 +204,8 @@ pub fn draw_not_gate(ui: &Ui, component: &Component, painter: &Painter, rect: &R
         }
     ));
 
+    painter.circle_filled(rect.right_center()-Vec2::RIGHT*PIN_LENGTH, STROKE_SIZE+1.5, color);
+
     let pin_pos = Pos2::new(rect.right(), rect.center().y);
     response.pins_position.insert(output.name.clone(), pin_pos);
     if response.interaction.is_none() {
@@ -219,7 +215,7 @@ pub fn draw_not_gate(ui: &Ui, component: &Component, painter: &Painter, rect: &R
     response
 }
 
-pub fn draw_xor_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
+fn draw_xor_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
     let spacing = 7.0;
     let response = draw_or_gate(ui, component, painter, pos, rect);
     let quad_bezier = QuadraticBezierShape::from_points_stroke([rect.left_top()+Vec2::RIGHT*spacing, rect.left_center()+Vec2::RIGHT*(5.0+spacing), rect.left_bottom()+Vec2::RIGHT*spacing], false, Color32::TRANSPARENT, Stroke::new(STROKE_SIZE, Color32::WHITE));
@@ -229,46 +225,23 @@ pub fn draw_xor_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos
     response
 }
 
-pub fn draw_nand_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
+fn draw_nand_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
     let response = draw_and_gate(ui, component, painter, pos, rect);
     painter.circle_filled(rect.right_center()-Vec2::RIGHT*PIN_LENGTH, STROKE_SIZE+1.5, Color32::WHITE);
 
     response
 }
 
-pub fn draw_nor_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
+fn draw_nor_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
     let response = draw_or_gate(ui, component, painter, pos, rect);
     painter.circle_filled(rect.right_center()-Vec2::RIGHT*PIN_LENGTH, STROKE_SIZE+1.5, Color32::WHITE);
 
     response
 }
 
-pub fn draw_xnor_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
+fn draw_xnor_gate(ui: &Ui, component: &Component, painter: &Painter, pos: Pos2, rect: &Rect) -> ComponentPinResponse {
     let response = draw_xor_gate(ui, component, painter, pos, rect);
     painter.circle_filled(rect.right_center()-Vec2::RIGHT*PIN_LENGTH, STROKE_SIZE+1.5, Color32::WHITE);
 
     response
-}
-
-fn get_pin_interaction(ui: &Ui, component: &Component, pin: &Pin, pin_pos: Pos2) -> Option<ComponentPinInteraction> {
-    let pin_rect = Rect::from_center_size(pin_pos, Vec2::splat(8.0));
-    let pin_response = ui.interact(
-        pin_rect,
-        Id::from(format!("{cmp}.{pin_id}", cmp=component.id, pin_id=pin.name)),
-        Sense::hover() | Sense::click()
-    );
-
-    if pin_response.clicked() || pin_response.hovered() {
-        return pin_response.clicked()
-            .then_some(ComponentPinInteraction {
-                pin_name: pin.name.clone(),
-                event: ComponentPinEvent::CLICKED
-            })
-            .or(pin_response.hovered().then_some(ComponentPinInteraction {
-                pin_name: pin.name.clone(),
-                event: ComponentPinEvent::HOVERED
-            }));
-    }
-
-    None
 }

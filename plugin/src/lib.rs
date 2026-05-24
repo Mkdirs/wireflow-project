@@ -20,9 +20,9 @@ impl Plugin {
         }
     }
     
-    pub fn register_component<T: ComponentType+Default>(&mut self) -> &mut Self {
+    pub fn register_component<T: ComponentType+Default>(&mut self, name: &str) -> &mut Self {
         let component = T::default();
-        let name = format!("{prefix}:{name}", prefix=self.name, name=component.name());
+        let name = format!("{prefix}:{name}", prefix=self.name);
         self.components.insert(name, Arc::new(Mutex::new(component)));
         self
     }
@@ -31,17 +31,17 @@ impl Plugin {
 pub const WIREFLOW:LazyCell<Plugin> = LazyCell::new(|| {
     let mut plugin = Plugin::new("wireflow");
     plugin
-        .register_component::<AndGate>()
-        .register_component::<OrGate>()
-        .register_component::<XorGate>()
-        .register_component::<NotGate>()
-        .register_component::<NandGate>()
-        .register_component::<NorGate>()
-        .register_component::<XnorGate>()
-        .register_component::<Clock>()
-        .register_component::<Compound>()
-        .register_component::<In>()
-        .register_component::<Out>();
+        .register_component::<AndGate>("and")
+        .register_component::<OrGate>("or")
+        .register_component::<XorGate>("xor")
+        .register_component::<NotGate>("not")
+        .register_component::<NandGate>("nand")
+        .register_component::<NorGate>("nor")
+        .register_component::<XnorGate>("xnor")
+        .register_component::<Clock>("clock")
+        .register_component::<Compound>("compound")
+        .register_component::<In>("in")
+        .register_component::<Out>("out");
     
     plugin
 });
