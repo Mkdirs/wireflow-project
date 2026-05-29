@@ -1,6 +1,6 @@
 use eframe::egui::{Align, Color32, Frame, Layout, Pos2, Rangef, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
 use circuit_sim::component::{Component, Pin};
-use crate::ui_elements::circuits::{get_pin_interaction, ComponentPinResponse, ComponentWidget, ComponentWidgetResponse, PIN_LENGTH, STROKE_SIZE};
+use crate::ui_elements::circuits::{default_senses, get_pin_interaction, ComponentPinResponse, ComponentWidget, ComponentWidgetResponse, PIN_LENGTH, STROKE_SIZE};
 use crate::ui_elements::circuits::logicgates::LOGIC_GATE_SIZE;
 
 pub(super) struct CompoundWidget<'a>{
@@ -30,7 +30,7 @@ impl<'a> ComponentWidget for CompoundWidget<'a> {
         let response = ui.put(rect, |ui: &mut Ui| {
             ui.scope_builder(
                 UiBuilder::new()
-                    .sense(Sense::hover() | Sense::drag())
+                    .sense(default_senses())
                     .layout(Layout::left_to_right(Align::Center)),
                 |ui| {
                     Frame::default()

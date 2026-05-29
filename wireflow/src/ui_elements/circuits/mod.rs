@@ -54,6 +54,10 @@ struct IOWidget<'a> {
     is_input: bool
 }
 
+pub(super) fn default_senses() -> Sense {
+    Sense::click_and_drag() | Sense::hover()
+}
+
 pub fn draw(component: &Component, pos: Pos2, ui: &mut Ui) -> ComponentWidgetResponse {
     let component_type = component.component_type.lock().unwrap();
 
@@ -108,7 +112,7 @@ impl<'a> ComponentWidget for IOWidget<'a> {
         let response = ui.put(rect, |ui: &mut Ui| {
             let (res, painter) = ui.allocate_painter(
                 self.size(),
-                Sense::drag() | Sense::hover()
+                default_senses()
             );
 
             let stroke = Stroke::new(STROKE_SIZE, Color32::WHITE);
@@ -186,7 +190,7 @@ impl<'a> ComponentWidget for ClockWidget<'a> {
         let response = ui.put(rect, |ui: &mut Ui| {
             let (res, painter) = ui.allocate_painter(
                 self.size(),
-                Sense::drag() | Sense::hover()
+                default_senses()
             );
 
             let size = 10.0;

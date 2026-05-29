@@ -2,7 +2,7 @@ use eframe::egui::{Color32, Id, Painter, Pos2, Rect, Response, Sense, Stroke, St
 use eframe::epaint::{CornerRadiusF32, QuadraticBezierShape};
 use circuit_sim::component::{Component, Pin};
 use plugin::components::{AndGate, NandGate, NorGate, NotGate, OrGate, XnorGate, XorGate};
-use crate::ui_elements::circuits::{get_pin_interaction, ComponentPinEvent, ComponentPinInteraction, ComponentPinResponse, ComponentWidget, ComponentWidgetResponse, INPUT_SPACING, PIN_LENGTH, STROKE_SIZE};
+use crate::ui_elements::circuits::{default_senses, get_pin_interaction, ComponentPinEvent, ComponentPinInteraction, ComponentPinResponse, ComponentWidget, ComponentWidgetResponse, INPUT_SPACING, PIN_LENGTH, STROKE_SIZE};
 
 pub(crate) const LOGIC_GATE_SIZE:Vec2 = Vec2::new(56.0, 33.0);
 
@@ -31,7 +31,7 @@ impl<'a> ComponentWidget for LogicGatesWidget<'a> {
         let response = ui.put(rect, |ui: &mut Ui| {
             let (res, painter) = ui.allocate_painter(
                 self.size(),
-                Sense::drag() | Sense::hover()
+                default_senses()
             );
 
             let component_type = self.component.component_type.lock().unwrap();

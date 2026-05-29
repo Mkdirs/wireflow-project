@@ -1,17 +1,23 @@
-use std::collections::HashMap;
+mod region;
+mod selection;
+
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use eframe::egui::{Align, Align2, Button, CentralPanel, Color32, Frame, Grid, Id, Key, LayerId, Layout, Modifiers, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, ScrollArea, Sense, SidePanel, Stroke, Style, TextEdit, TopBottomPanel, Ui, Vec2};
+use eframe::egui::{Align, Align2, Button, CentralPanel, Color32, DragPanButtons, Frame, Grid, Id, Key, LayerId, Layout, Modifiers, PointerButton, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, ScrollArea, Sense, SidePanel, Stroke, StrokeKind, Style, TextEdit, TopBottomPanel, Ui, Vec2};
 use circuit_sim::{Circuit, PlayState};
 use circuit_sim::component::{Component, ComponentType, PinMode};
 use crate::AppState;
 use crate::ui_elements::{circuits};
 use crate::ui_elements::circuits::ComponentPinEvent;
+use crate::ui_elements::circuits_scene::region::Region;
+use crate::ui_elements::circuits_scene::selection::Selection;
 
 #[derive(Debug)]
 pub struct CircuitsScene {
     circuit: Arc<Mutex<Circuit>>,
     component_wiring: ComponentWiringProcess,
+    selection: Selection,
     components_prompt: ComponentsPrompt,
     last_mouse_pos: Pos2,
     components_position: HashMap<String, Pos2>,
@@ -24,6 +30,14 @@ struct ComponentWiringProcess {
     end: String,
     just_finished: bool
 }
+
+// #[derive(Debug, Default)]
+// struct Selection {
+//     start: Option<Pos2>,
+//     end: Pos2,
+//     is_complete: bool,
+//     elements: HashMap<String, Rect>
+// }
 
 #[derive(Debug, Default)]
 struct ComponentsPrompt {
@@ -38,6 +52,7 @@ impl Default for CircuitsScene {
         Self {
             circuit: Arc::new(Mutex::new(Circuit::default())),
             component_wiring: ComponentWiringProcess::default(),
+            selection: Selection::default(),
             last_mouse_pos: Pos2::ZERO,
             components_prompt: ComponentsPrompt::default(),
             components_position: HashMap::new(),
@@ -148,6 +163,7 @@ impl CircuitsScene {
         Frame::new()
             .show(ui, |ui| {
                 Scene::default()
+                    .drag_pan_buttons(DragPanButtons::MIDDLE)
                     .show(ui, rect, |ui: &mut Ui| {
                         if let Some(mouse_pos) = ui.response().hover_pos() {
                             self.last_mouse_pos = mouse_pos;
@@ -155,6 +171,9 @@ impl CircuitsScene {
 
                         self.render_components(ui);
                         self.render_connexions(ui);
+                        if !self.selection.is_empty() {
+                            self.selection.region.render(ui);
+                        }
 
                         let circuit_clone = self.circuit.clone();
                         let mut circuit = circuit_clone.lock().unwrap();
@@ -185,6 +204,37 @@ impl CircuitsScene {
                             self.component_wiring.reset();
                         }
 
+                        if ui.response().drag_started() {
+                            self.selection.region = Region::from(self.last_mouse_pos);
+                        } else if ui.response().dragged() {
+                            self.selection.region.to(self.last_mouse_pos);
+                        } else if ui.response().drag_stopped() {
+                            self.selection.complete();
+                            if !self.selection.is_complete() {
+                                self.selection.clear();
+                            }
+                        }
+
+                        if self.selection.is_complete() {
+                            self.selection.region.fit_to_elements();
+                            let rect = self.selection.region.rect();
+                            let res = ui.interact(rect, Id::from("SelectionRect"), Sense::click_and_drag());
+
+                            if res.dragged() {
+                                self.selection.region.translate(res.drag_delta());
+                                for (id, pos) in self.components_position
+                                    .iter_mut()
+                                    .filter(|(id, _)| self.selection.region.elements.contains_key(*id)) {
+
+                                    *pos = *pos+res.drag_delta();
+                                }
+                            }
+
+                            if res.clicked_elsewhere() {
+                                self.selection.clear();
+                            }
+                        }
+
                     })
             }).response
     }
@@ -206,6 +256,7 @@ impl CircuitsScene {
             }
 
             if response.dragged() {
+                self.selection.clear();
                 let drag_delta = response.drag_delta();
                 *component_pos = *component_pos+drag_delta;
             }
@@ -214,10 +265,22 @@ impl CircuitsScene {
                 self.last_mouse_pos = mouse_pos;
             }
 
+            if response.clicked_by(PointerButton::Primary) {
+                self.selection.select_single(comp.id.clone(), response.rect);
+            }
+
+            if self.selection.intersects(response.rect) {
+                self.selection.add(comp.id.clone(), response.rect);
+            } else if self.selection.contains(&comp.id) {
+                self.selection.remove(&comp.id);
+            }
+
+
             if let Some(interaction) = pin_response.interaction {
                 let pin = comp.get(&interaction.pin_name).unwrap();
                 let pos = self.pins_position.get(&format!("{}.{}", comp.id, interaction.pin_name)).unwrap();
-                
+
+
                 match interaction.event {
                     ComponentPinEvent::HOVERED => {
                         let painter = ui.painter();
@@ -253,7 +316,6 @@ impl CircuitsScene {
             let source_pos = self.pins_position.get(&format!("{}.{}", source_comp.id, source_pin.name)).unwrap();
             let target_pos = self.pins_position.get(&format!("{}.{}", target_comp.id, target_pin.name)).unwrap();
 
-            // println!("source value: {:?}", source_pin.value);
             let color = if source_pin.value.iter().fold(false, |acc, e| acc || *e) {
                 Color32::GREEN
             } else {
@@ -350,3 +412,44 @@ impl ComponentWiringProcess {
         self.just_finished
     }
 }
+//
+// impl Selection {
+//     pub fn region(&self) -> Option<Rect> {
+//         if self.is_complete {
+//             self.compact_region()
+//         } else {
+//             self.start.and_then(|start| Some(Rect::from_points(&[start, self.end])))
+//         }
+//     }
+//
+//     fn compact_region(&self) -> Option<Rect> {
+//         let points = self.elements.values()
+//             .map(|rect| [rect.min, rect.max])
+//             .flatten()
+//             .collect::<Vec<_>>();
+//
+//         Some(Rect::from_points(&points))
+//     }
+//
+//     pub fn start(&mut self, pos: Pos2) {
+//         self.start = Some(pos);
+//         self.end = pos;
+//         self.is_complete = false;
+//     }
+//
+//     pub fn complete(&mut self) {
+//         if self.elements.is_empty() {
+//             self.start = None;
+//             return;
+//         }
+//
+//         self.is_complete = true;
+//     }
+//
+//     pub fn translate(&mut self, delta: Vec2) {
+//         let start = self.start.unwrap();
+//         self.start = Some(start + delta);
+//         self.end += delta;
+//     }
+//
+// }
