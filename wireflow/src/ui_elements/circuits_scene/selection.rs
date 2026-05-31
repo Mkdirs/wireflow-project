@@ -1,10 +1,11 @@
-use eframe::egui::{Rect, StrokeKind, Ui};
+use eframe::egui::Rect;
 use crate::ui_elements::circuits_scene::region::Region;
 
 #[derive(Debug, Default)]
 pub struct Selection {
     pub region: Region,
     is_complete: bool,
+    selecting: bool,
 }
 
 impl Selection {
@@ -31,7 +32,9 @@ impl Selection {
             return;
         }
 
+        self.region.fit_to_elements();
         self.is_complete = true;
+        self.selecting = false;
     }
 
     pub fn is_complete(&self) -> bool {
@@ -42,9 +45,15 @@ impl Selection {
         self.region.elements.remove(id);
     }
 
+    pub fn begin(&mut self) {
+        self.selecting = true;
+        self.is_complete = false;
+    }
+
     pub fn clear(&mut self) {
         self.region = Region::default();
         self.is_complete = false;
+        self.selecting = false;
     }
 
     pub fn contains(&self, id: &str) -> bool {
@@ -53,5 +62,13 @@ impl Selection {
 
     pub fn is_empty(&self) -> bool {
         self.region.elements.is_empty()
+    }
+
+    pub fn is_selecting(&self) -> bool {
+        self.selecting
+    }
+
+    pub fn is_single(&self) -> bool {
+        self.region.elements.len() == 1
     }
 }

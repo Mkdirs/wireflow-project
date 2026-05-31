@@ -1,12 +1,12 @@
 mod region;
 mod selection;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use eframe::egui::{Align, Align2, Button, CentralPanel, Color32, DragPanButtons, Frame, Grid, Id, Key, LayerId, Layout, Modifiers, PointerButton, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, ScrollArea, Sense, SidePanel, Stroke, StrokeKind, Style, TextEdit, TopBottomPanel, Ui, Vec2};
+use eframe::egui::{Align, Align2, Button, Color32, DragPanButtons, Frame, Id, Key, Layout, PointerButton, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, ScrollArea, Sense, Stroke, Ui};
 use circuit_sim::{Circuit, PlayState};
-use circuit_sim::component::{Component, ComponentType, PinMode};
+use circuit_sim::component::Component;
 use crate::AppState;
 use crate::ui_elements::{circuits};
 use crate::ui_elements::circuits::ComponentPinEvent;
@@ -30,14 +30,6 @@ struct ComponentWiringProcess {
     end: String,
     just_finished: bool
 }
-
-// #[derive(Debug, Default)]
-// struct Selection {
-//     start: Option<Pos2>,
-//     end: Pos2,
-//     is_complete: bool,
-//     elements: HashMap<String, Rect>
-// }
 
 #[derive(Debug, Default)]
 struct ComponentsPrompt {
@@ -171,66 +163,19 @@ impl CircuitsScene {
 
                         self.render_components(ui);
                         self.render_connexions(ui);
-                        if !self.selection.is_empty() {
+
+                        if self.selection.is_selecting() || self.selection.is_complete() {
                             self.selection.region.render(ui);
                         }
 
-                        let circuit_clone = self.circuit.clone();
-                        let mut circuit = circuit_clone.lock().unwrap();
+                        self.handle_wiring(ui);
+                        self.handle_selection(ui);
 
-                        if self.component_wiring.begining() {
-                            if ui.response().clicked() {
+                        if ui.response().is_pointer_button_down_on() {
+                            if self.component_wiring.beginning() {
                                 self.component_wiring.reset();
-                                return;
                             }
-                            let (start_comp_id, start_pin_id) = self.component_wiring.start().unwrap();
-                            let start = self.pins_position.get(&format!("{start_comp_id}.{start_pin_id}")).unwrap();
-                            let painter = ui.painter();
-
-                            painter.line_segment(
-                                [*start, self.last_mouse_pos],
-                                Stroke::new(circuits::STROKE_SIZE, Color32::WHITE)
-                            );
-
-                        } else if self.component_wiring.just_finished() {
-                            let (start_comp_id, start_pin_id) = self.component_wiring.start().unwrap();
-                            let (end_comp_id, end_pin_id) = self.component_wiring.end().unwrap();
-
-                            circuit.wire(
-                                (&start_comp_id, &start_pin_id),
-                                (&end_comp_id, &end_pin_id)
-                            );
-
-                            self.component_wiring.reset();
-                        }
-
-                        if ui.response().drag_started() {
-                            self.selection.region = Region::from(self.last_mouse_pos);
-                        } else if ui.response().dragged() {
-                            self.selection.region.to(self.last_mouse_pos);
-                        } else if ui.response().drag_stopped() {
-                            self.selection.complete();
-                            if !self.selection.is_complete() {
-                                self.selection.clear();
-                            }
-                        }
-
-                        if self.selection.is_complete() {
-                            self.selection.region.fit_to_elements();
-                            let rect = self.selection.region.rect();
-                            let res = ui.interact(rect, Id::from("SelectionRect"), Sense::click_and_drag());
-
-                            if res.dragged() {
-                                self.selection.region.translate(res.drag_delta());
-                                for (id, pos) in self.components_position
-                                    .iter_mut()
-                                    .filter(|(id, _)| self.selection.region.elements.contains_key(*id)) {
-
-                                    *pos = *pos+res.drag_delta();
-                                }
-                            }
-
-                            if res.clicked_elsewhere() {
+                            if self.selection.is_complete() {
                                 self.selection.clear();
                             }
                         }
@@ -238,6 +183,70 @@ impl CircuitsScene {
                     })
             }).response
     }
+
+    fn handle_wiring(&mut self, ui: &mut Ui) {
+        let circuit_clone = self.circuit.clone();
+        let mut circuit = circuit_clone.lock().unwrap();
+        if self.component_wiring.beginning() {
+            let (start_comp_id, start_pin_id) = self.component_wiring.start().unwrap();
+            let start = self.pins_position.get(&format!("{start_comp_id}.{start_pin_id}")).unwrap();
+            let painter = ui.painter();
+
+            painter.line_segment(
+                [*start, self.last_mouse_pos],
+                Stroke::new(circuits::STROKE_SIZE, Color32::WHITE)
+            );
+
+        } else if self.component_wiring.just_finished() {
+            let (start_comp_id, start_pin_id) = self.component_wiring.start().unwrap();
+            let (end_comp_id, end_pin_id) = self.component_wiring.end().unwrap();
+
+            circuit.wire(
+                (&start_comp_id, &start_pin_id),
+                (&end_comp_id, &end_pin_id)
+            );
+
+            self.component_wiring.reset();
+        }
+    }
+
+    fn handle_selection(&mut self, ui: &mut Ui) {
+        if self.selection.is_selecting() {
+            if ui.response().dragged() {
+                self.selection.region.to(self.last_mouse_pos);
+            } else if ui.response().drag_stopped() {
+                self.selection.complete();
+                if !self.selection.is_complete() {
+                    self.selection.clear();
+                }
+            }
+            return;
+        }
+
+        if !self.selection.is_complete() {
+            if ui.response().drag_started() {
+                self.selection.clear();
+                self.selection.region = Region::from(self.last_mouse_pos);
+                self.selection.begin();
+            }
+            return;
+        }
+
+        let rect = self.selection.region.rect();
+
+        let selection_response = ui.interact(rect, Id::from("SelectionRect"), Sense::click_and_drag());
+        if selection_response.dragged() {
+            let delta = selection_response.drag_delta();
+            self.selection.region.translate(delta);
+            for (_, pos) in self.components_position
+                .iter_mut()
+                .filter(|(id, _)| self.selection.region.elements.contains_key(*id)) {
+
+                *pos = *pos+delta;
+            }
+        }
+    }
+
     fn render_components(&mut self, ui: &mut Ui) {
         let circuit_clone = self.circuit.clone();
         let mut circuit = circuit_clone.lock().unwrap();
@@ -266,7 +275,13 @@ impl CircuitsScene {
             }
 
             if response.clicked_by(PointerButton::Primary) {
-                self.selection.select_single(comp.id.clone(), response.rect);
+                if ui.input(|i| i.modifiers.shift) {
+                    self.selection.begin();
+                    self.selection.add(comp.id.clone(), response.rect);
+                    self.selection.complete();
+                } else {
+                    self.selection.select_single(comp.id.clone(), response.rect);
+                }
             }
 
             if self.selection.intersects(response.rect) {
@@ -274,7 +289,6 @@ impl CircuitsScene {
             } else if self.selection.contains(&comp.id) {
                 self.selection.remove(&comp.id);
             }
-
 
             if let Some(interaction) = pin_response.interaction {
                 let pin = comp.get(&interaction.pin_name).unwrap();
@@ -356,9 +370,6 @@ impl CircuitsScene {
                     }
                 }
             }
-            // Circuit::run(circuit);
-            // circuit.lock().unwrap().run();
-            // Simulation::run(simulation, || {});
         });
     }
 
@@ -368,7 +379,7 @@ impl CircuitsScene {
 }
 
 impl ComponentWiringProcess {
-    pub fn begining(&self) -> bool {
+    pub fn beginning(&self) -> bool {
         !self.start.is_empty() && !self.just_finished
     }
 
@@ -400,7 +411,7 @@ impl ComponentWiringProcess {
 
     pub fn target(&mut self, component_id: &str, pin_id: &str) {
         let id = format!("{}.{}", component_id, pin_id);
-        if !self.begining() {
+        if !self.beginning() {
             self.start = id.clone();
         } else {
             self.end = id.clone();
@@ -412,44 +423,3 @@ impl ComponentWiringProcess {
         self.just_finished
     }
 }
-//
-// impl Selection {
-//     pub fn region(&self) -> Option<Rect> {
-//         if self.is_complete {
-//             self.compact_region()
-//         } else {
-//             self.start.and_then(|start| Some(Rect::from_points(&[start, self.end])))
-//         }
-//     }
-//
-//     fn compact_region(&self) -> Option<Rect> {
-//         let points = self.elements.values()
-//             .map(|rect| [rect.min, rect.max])
-//             .flatten()
-//             .collect::<Vec<_>>();
-//
-//         Some(Rect::from_points(&points))
-//     }
-//
-//     pub fn start(&mut self, pos: Pos2) {
-//         self.start = Some(pos);
-//         self.end = pos;
-//         self.is_complete = false;
-//     }
-//
-//     pub fn complete(&mut self) {
-//         if self.elements.is_empty() {
-//             self.start = None;
-//             return;
-//         }
-//
-//         self.is_complete = true;
-//     }
-//
-//     pub fn translate(&mut self, delta: Vec2) {
-//         let start = self.start.unwrap();
-//         self.start = Some(start + delta);
-//         self.end += delta;
-//     }
-//
-// }
