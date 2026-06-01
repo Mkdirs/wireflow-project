@@ -4,7 +4,7 @@ mod selection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use eframe::egui::{Align, Align2, Button, Color32, DragPanButtons, Frame, Id, Key, Layout, PointerButton, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, ScrollArea, Sense, Stroke, Ui};
+use eframe::egui::{Align, Align2, Button, Color32, DragPanButtons, Frame, Id, Key, LayerId, Layout, PointerButton, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, ScrollArea, Sense, Stroke, Ui};
 use circuit_sim::{Circuit, PlayState};
 use circuit_sim::component::Component;
 use crate::AppState;
@@ -170,16 +170,6 @@ impl CircuitsScene {
 
                         self.handle_wiring(ui);
                         self.handle_selection(ui);
-
-                        if ui.response().is_pointer_button_down_on() {
-                            if self.component_wiring.beginning() {
-                                self.component_wiring.reset();
-                            }
-                            if self.selection.is_complete() {
-                                self.selection.clear();
-                            }
-                        }
-
                     })
             }).response
     }
@@ -188,6 +178,10 @@ impl CircuitsScene {
         let circuit_clone = self.circuit.clone();
         let mut circuit = circuit_clone.lock().unwrap();
         if self.component_wiring.beginning() {
+            if ui.response().is_pointer_button_down_on() {
+                self.component_wiring.reset();
+                return;
+            }
             let (start_comp_id, start_pin_id) = self.component_wiring.start().unwrap();
             let start = self.pins_position.get(&format!("{start_comp_id}.{start_pin_id}")).unwrap();
             let painter = ui.painter();
@@ -234,16 +228,20 @@ impl CircuitsScene {
 
         let rect = self.selection.region.rect();
 
-        let selection_response = ui.interact(rect, Id::from("SelectionRect"), Sense::click_and_drag());
-        if selection_response.dragged() {
-            let delta = selection_response.drag_delta();
-            self.selection.region.translate(delta);
-            for (_, pos) in self.components_position
-                .iter_mut()
-                .filter(|(id, _)| self.selection.region.elements.contains_key(*id)) {
+        if rect.contains(self.last_mouse_pos) {
+            if ui.response().dragged() {
+                let delta = ui.response().drag_delta();
+                self.selection.region.translate(delta);
+                for (_, pos) in self.components_position
+                    .iter_mut()
+                    .filter(|(id, _)| self.selection.region.elements.contains_key(*id)) {
 
-                *pos = *pos+delta;
+                    *pos = *pos+delta;
+                }
             }
+
+        } else if ui.response().is_pointer_button_down_on() {
+            self.selection.clear();
         }
     }
 
@@ -264,10 +262,17 @@ impl CircuitsScene {
                 self.pins_position.insert(format!("{}.{pin_name}", comp.id), pin_pos);
             }
 
+            let mut component_rect = response.rect;
+
             if response.dragged() {
-                self.selection.clear();
                 let drag_delta = response.drag_delta();
+                if self.selection.is_single() {
+                    self.selection.region.translate(drag_delta);
+                } else {
+                    self.selection.clear();
+                }
                 *component_pos = *component_pos+drag_delta;
+                component_rect = component_rect.translate(drag_delta);
             }
 
             if let Some(mouse_pos) = response.hover_pos() {
@@ -277,15 +282,15 @@ impl CircuitsScene {
             if response.clicked_by(PointerButton::Primary) {
                 if ui.input(|i| i.modifiers.shift) {
                     self.selection.begin();
-                    self.selection.add(comp.id.clone(), response.rect);
+                    self.selection.add(comp.id.clone(), component_rect);
                     self.selection.complete();
                 } else {
-                    self.selection.select_single(comp.id.clone(), response.rect);
+                    self.selection.select_single(comp.id.clone(), component_rect);
                 }
             }
 
-            if self.selection.intersects(response.rect) {
-                self.selection.add(comp.id.clone(), response.rect);
+            if self.selection.intersects(component_rect) {
+                self.selection.add(comp.id.clone(), component_rect);
             } else if self.selection.contains(&comp.id) {
                 self.selection.remove(&comp.id);
             }
@@ -293,7 +298,6 @@ impl CircuitsScene {
             if let Some(interaction) = pin_response.interaction {
                 let pin = comp.get(&interaction.pin_name).unwrap();
                 let pos = self.pins_position.get(&format!("{}.{}", comp.id, interaction.pin_name)).unwrap();
-
 
                 match interaction.event {
                     ComponentPinEvent::HOVERED => {
