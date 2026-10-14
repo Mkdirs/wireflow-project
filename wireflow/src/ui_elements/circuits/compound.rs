@@ -1,4 +1,4 @@
-use eframe::egui::{Align, Color32, Frame, Layout, Pos2, Rangef, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
+use eframe::egui::{Align, Color32, Frame, Layout, Pos2, Rangef, RichText, Stroke, Ui, UiBuilder, Vec2};
 use wireflowapi::component::{Component, Pin};
 use crate::ui_elements::circuits::{default_senses, get_pin_interaction, ComponentPinResponse, ComponentWidget, ComponentWidgetResponse, PIN_LENGTH, STROKE_SIZE};
 use crate::ui_elements::circuits::logicgates::LOGIC_GATE_SIZE;

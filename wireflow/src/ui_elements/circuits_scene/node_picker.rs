@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use eframe::egui::{Align2, Color32, CursorIcon, Frame, Grid, Id, InnerResponse, Key, Label, Margin, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, ScrollArea, Sense, Stroke, StrokeKind, Ui, Vec2};
+use eframe::egui::{Align2, CursorIcon, Frame, Grid, Id, Key, Label, Popup, PopupAnchor, Pos2, RectAlign, ScrollArea, Sense, Ui, Vec2};
 use wireflowapi::component::Component;
 use wireflowapi::registry::{ComponentRegistryItem, REGISTRIES};
 use crate::ui_elements::{circuits};

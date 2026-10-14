@@ -1,10 +1,9 @@
 use crate::ui_elements::circuits::compound::CompoundWidget;
 use crate::ui_elements::circuits::logicgates::{LOGIC_GATE_SIZE, LogicGatesWidget};
 use wireflowapi::component::{Component, Pin};
-use eframe::egui::{Align2, Atom, Atoms, Color32, FontId, Id, IntoAtoms, Painter, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2, Widget};
-use eframe::epaint::{CircleShape, CubicBezierShape, PathShape};
+use eframe::egui::{Align2, Color32, FontId, Id, IntoAtoms, Painter, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
+use eframe::epaint::CubicBezierShape;
 use std::collections::HashMap;
-use std::pin::pin;
 use wireflowapi::component::primitives::{AndGate, Clock, In, NandGate, NorGate, NotGate, OrGate, Out, XnorGate, XorGate};
 
 mod logicgates;

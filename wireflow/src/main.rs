@@ -4,7 +4,7 @@ mod ui_elements;
 
 use crate::views::{View, ViewId, Workspace};
 use eframe::egui::{CentralPanel, Context, IconData, TopBottomPanel};
-use eframe::{egui, run_native, App, CreationContext, Frame, NativeOptions};
+use eframe::{run_native, App, CreationContext, Frame, NativeOptions};
 
 #[derive(Default)]
 struct AppState {

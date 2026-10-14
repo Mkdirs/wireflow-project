@@ -1,5 +1,4 @@
-use eframe::egui::{Frame, Id, Label, Pos2, Response, ScrollArea, Sense, SidePanel, Ui, Vec2, Widget};
-use eframe::emath::TSTransform;
+use eframe::egui::{Frame, Id, Label, Response, ScrollArea, Sense, SidePanel, Ui};
 use crate::ui_elements::{circuits, CircuitsScene};
 
 #[derive(Debug, Default)]

@@ -16,7 +16,6 @@ use crate::ui_elements::{circuits};
 use crate::ui_elements::circuits::{ComponentPinEvent, PIN_RADIUS};
 use crate::ui_elements::circuits_scene::node_picker::NodePicker;
 use crate::ui_elements::circuits_scene::nodes_panel::NodePanel;
-use crate::ui_elements::circuits_scene::region::Region;
 use crate::ui_elements::circuits_scene::selection::Selection;
 
 #[derive(Debug)]

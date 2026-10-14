@@ -1,4 +1,4 @@
-use crate::ui_elements::circuits::{get_pin_interaction, with_body, ComponentPinResponse, ComponentWidget, ComponentWidgetResponse, INPUT_SPACING, STROKE_SIZE, PIN_COLOR, PIN_RADIUS, with_inputs, with_pin};
+use crate::ui_elements::circuits::{get_pin_interaction, with_body, ComponentPinResponse, ComponentWidget, ComponentWidgetResponse, STROKE_SIZE, with_inputs, with_pin};
 use wireflowapi::component::Component;
 use eframe::egui::{Color32, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2};
 use eframe::epaint::{CornerRadiusF32, QuadraticBezierShape};
