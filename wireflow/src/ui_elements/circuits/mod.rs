@@ -1,15 +1,18 @@
-use std::collections::HashMap;
-use eframe::egui::{Align2, Color32, FontId, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
-use eframe::epaint::CubicBezierShape;
-use circuit_sim::component::{Component, Pin};
-use plugin::components::{AndGate, Clock, In, NandGate, NorGate, NotGate, OrGate, Out, XnorGate, XorGate};
 use crate::ui_elements::circuits::compound::CompoundWidget;
-use crate::ui_elements::circuits::logicgates::{LogicGatesWidget, LOGIC_GATE_SIZE};
+use crate::ui_elements::circuits::logicgates::{LOGIC_GATE_SIZE, LogicGatesWidget};
+use wireflowapi::component::{Component, Pin};
+use eframe::egui::{Align2, Atom, Atoms, Color32, FontId, Id, IntoAtoms, Painter, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2, Widget};
+use eframe::epaint::{CircleShape, CubicBezierShape, PathShape};
+use std::collections::HashMap;
+use std::pin::pin;
+use wireflowapi::component::primitives::{AndGate, Clock, In, NandGate, NorGate, NotGate, OrGate, Out, XnorGate, XorGate};
 
 mod logicgates;
 pub mod compound;
 
-const PIN_LENGTH:f32 = 12.0;
+pub const PIN_LENGTH:f32 = 6.0;
+pub const PIN_RADIUS:f32 = 4.0;
+pub const PIN_COLOR:Color32 = Color32::WHITE;
 const INPUT_SPACING:f32 = 16.0;
 pub const STROKE_SIZE:f32 = 3.0;
 
@@ -40,7 +43,7 @@ pub trait ComponentWidget {
     fn rect(&self) -> Rect {
         Rect::from_min_size(self.position(), self.size())
     }
-    fn draw(&self, ui: &mut Ui) -> ComponentWidgetResponse;
+    fn draw(&self, ui: &mut Ui, interactive: bool) -> ComponentWidgetResponse;
 }
 
 struct ClockWidget<'a>{
@@ -54,11 +57,15 @@ struct IOWidget<'a> {
     is_input: bool
 }
 
-pub(super) fn default_senses() -> Sense {
-    Sense::click_and_drag() | Sense::hover()
+pub(super) fn default_senses(interactive: bool) -> Sense {
+    if interactive {
+        Sense::click_and_drag() | Sense::hover()
+    } else {
+        Sense::empty()
+    }
 }
 
-pub fn draw(component: &Component, pos: Pos2, ui: &mut Ui) -> ComponentWidgetResponse {
+pub fn draw(ui: &mut Ui, component: &Component, pos: Pos2, interactive: bool) -> ComponentWidgetResponse {
     let component_type = component.component_type.lock().unwrap();
 
     let res = if component_type.as_any().is::<OrGate>()
@@ -71,23 +78,23 @@ pub fn draw(component: &Component, pos: Pos2, ui: &mut Ui) -> ComponentWidgetRes
     {
         drop(component_type);
         let widget = LogicGatesWidget{ component, pos };
-        widget.draw(ui)
+        widget.draw(ui, interactive)
     } else if component_type.as_any().is::<Clock>() {
         drop(component_type);
         let widget = ClockWidget { component, pos };
-        widget.draw(ui)
+        widget.draw(ui, interactive)
     } else if component_type.as_any().is::<In>() {
         drop(component_type);
         let widget = IOWidget { component, pos, is_input: true };
-        widget.draw(ui)
+        widget.draw(ui, interactive)
     } else if component_type.as_any().is::<Out>() {
         drop(component_type);
         let widget = IOWidget { component, pos, is_input: false };
-        widget.draw(ui)
+        widget.draw(ui, interactive)
     } else {
         drop(component_type);
         let widget = CompoundWidget{ component, pos };
-        widget.draw(ui)
+        widget.draw(ui, interactive)
     };
 
     res
@@ -106,38 +113,11 @@ impl<'a> ComponentWidget for IOWidget<'a> {
         LOGIC_GATE_SIZE
     }
 
-    fn draw(&self, ui: &mut Ui) -> ComponentWidgetResponse {
+    fn draw(&self, ui: &mut Ui, interactive: bool) -> ComponentWidgetResponse {
         let rect = self.rect();
-        let mut pin_res = ComponentPinResponse::default();
-        let response = ui.put(rect, |ui: &mut Ui| {
-            let (res, painter) = ui.allocate_painter(
-                self.size(),
-                default_senses()
-            );
+        let stroke = Stroke::new(STROKE_SIZE, Color32::WHITE);
 
-            let stroke = Stroke::new(STROKE_SIZE, Color32::WHITE);
-
-            let (pin, pin_pos) = match self.is_input {
-                true => {
-                    let output = self.component.get("OUT").unwrap();
-                    let output_pos = Pos2::new(rect.right(), rect.center().y);
-
-                    (output, output_pos)
-                },
-                false => {
-                    let input = self.component.get("IN").unwrap();
-                    let input_pos = Pos2::new(rect.left(), rect.center().y);
-
-                    (input, input_pos)
-                },
-            };
-
-            let pin_color = if pin.value.iter().fold(false, |acc, e| acc || *e) {
-                Color32::GREEN
-            } else {
-                stroke.color
-            };
-
+        let response = with_body(ui, interactive, rect, |res, painter| {
             let display_label = if self.is_input {
                 "IN"
             } else {
@@ -146,27 +126,28 @@ impl<'a> ComponentWidget for IOWidget<'a> {
             let mut font = FontId::default();
             font.size = 10.0;
 
-            painter.circle_stroke(rect.center(), rect.width()/2.0 - PIN_LENGTH - STROKE_SIZE, stroke);
+            painter.circle_stroke(rect.center(), rect.height()/2.0 - stroke.width, stroke);
             painter.text(rect.center(), Align2::CENTER_CENTER, display_label, font, Color32::WHITE);
-
-            if self.is_input {
-                painter.hline(pin_pos.x - PIN_LENGTH..=pin_pos.x, pin_pos.y, Stroke{
-                    color: pin_color,
-                    ..stroke
-                });
-            } else {
-                painter.hline(pin_pos.x + PIN_LENGTH..=pin_pos.x, pin_pos.y, Stroke {
-                    color: pin_color,
-                    ..stroke
-                });
-            }
-
-            pin_res.pins_position.insert(pin.name.clone(), pin_pos);
-
-            pin_res.interaction = get_pin_interaction(ui, self.component, pin, pin_pos);
-
-            res
         });
+
+        // Pins
+        let mut pin_res = ComponentPinResponse::default();
+        let (pin, pin_pos) = match self.is_input {
+            true => {
+                let output = self.component.get("OUT").unwrap();
+                let output_pos = Pos2::new(rect.right() - stroke.width / 2.0, rect.center().y);
+
+                (output, output_pos)
+            },
+            false => {
+                let input = self.component.get("IN").unwrap();
+                let input_pos = Pos2::new(rect.left() + stroke.width / 2.0, rect.center().y);
+
+                (input, input_pos)
+            },
+        };
+
+        with_pin(ui, self.component, pin, pin_pos, interactive, &mut pin_res);
 
         (pin_res, response)
     }
@@ -184,17 +165,12 @@ impl<'a> ComponentWidget for ClockWidget<'a> {
         LOGIC_GATE_SIZE
     }
 
-    fn draw(&self, ui: &mut Ui) -> ComponentWidgetResponse {
+    fn draw(&self, ui: &mut Ui, interactive: bool) -> ComponentWidgetResponse {
         let rect = self.rect();
-        let mut pin_res = ComponentPinResponse::default();
-        let response = ui.put(rect, |ui: &mut Ui| {
-            let (res, painter) = ui.allocate_painter(
-                self.size(),
-                default_senses()
-            );
 
+        let response = with_body(ui, interactive, rect, |res, painter| {
             let size = 10.0;
-            painter.circle_stroke(rect.center(), rect.width()/2.0 - PIN_LENGTH - STROKE_SIZE, Stroke::new(STROKE_SIZE, Color32::WHITE));
+            painter.circle_stroke(rect.center(), rect.height()/2.0 - STROKE_SIZE, Stroke::new(STROKE_SIZE, Color32::WHITE));
             let curve = CubicBezierShape::from_points_stroke(
                 [
                     rect.center()+Vec2::LEFT*size,
@@ -207,28 +183,61 @@ impl<'a> ComponentWidget for ClockWidget<'a> {
                 Stroke::new(STROKE_SIZE, Color32::WHITE)
             );
             painter.add(curve);
-            let output = self.component.get("OUT").unwrap();
-            painter.hline(rect.right()- PIN_LENGTH..=rect.right(), rect.center().y, Stroke::new(
-                STROKE_SIZE,
-                if output.value.iter().fold(false, |acc, e| acc || *e) {
-                    Color32::GREEN
-                } else {
-                    Color32::WHITE
-                }
-            ));
-            let pin_pos = Pos2::new(rect.right(), rect.center().y);
-            pin_res.pins_position.insert(output.name.clone(), pin_pos);
-
-            pin_res.interaction = get_pin_interaction(ui, self.component, output, pin_pos);
-            res
         });
+
+        // Pins
+        let mut pin_res = ComponentPinResponse::default();
+        let pin_pos = Pos2::new(rect.right() - STROKE_SIZE / 2.0, rect.center().y);
+        let output = self.component.get("OUT").unwrap();
+        with_pin(ui, self.component, output, pin_pos, interactive, &mut pin_res);
 
         (pin_res, response)
     }
 }
 
-pub(self) fn get_pin_interaction(ui: &Ui, component: &Component, pin: &Pin, pin_pos: Pos2) -> Option<ComponentPinInteraction> {
-    let pin_rect = Rect::from_center_size(pin_pos, Vec2::splat(8.0));
+pub(self) fn with_body(ui: &mut Ui, interactive: bool, rect: Rect, f: impl Fn(Response, Painter)) -> Response{
+    ui.put(rect, |ui: &mut Ui| {
+        let (res, painter) = ui.allocate_painter(
+            rect.size(),
+            default_senses(interactive)
+        );
+
+        (f)(res.clone(), painter);
+        res
+    })
+}
+pub(self) fn with_pin(ui: &Ui, component: &Component, pin: &Pin, pos: Pos2, interactive: bool, pin_response: &mut ComponentPinResponse) {
+    let painter = ui.painter();
+
+    painter.circle_stroke(
+        pos,
+        PIN_RADIUS,
+        Stroke::new(STROKE_SIZE / 2.0, PIN_COLOR),
+    );
+    pin_response.pins_position.insert(pin.name.clone(), pos);
+    if pin_response.interaction.is_none() {
+        pin_response.interaction = get_pin_interaction(ui, component, pin, pos, interactive);
+    }
+}
+
+pub(self) fn with_inputs(ui: &Ui, rect: Rect, component: &Component, interactive: bool, pin_response: &mut ComponentPinResponse) {
+    let mut inputs = component.inputs();
+    inputs.sort_by_key(|input| input.name.clone());
+
+    let inputs_size = (STROKE_SIZE *inputs.len() as f32)+(inputs.len()-1) as f32 * INPUT_SPACING;
+    for (i, input) in inputs.into_iter().enumerate() {
+        let y = rect.top() + (i as f32* INPUT_SPACING) + (rect.size().y/2.0 - inputs_size / 2.0) + STROKE_SIZE;
+
+        let pin_pos = Pos2::new(rect.left() + STROKE_SIZE / 2.0, y);
+        with_pin(ui, component, input, pin_pos, interactive, pin_response);
+    }
+}
+
+pub(self) fn get_pin_interaction(ui: &Ui, component: &Component, pin: &Pin, pin_pos: Pos2, interactive: bool) -> Option<ComponentPinInteraction> {
+    if !interactive {
+        return None;
+    }
+    let pin_rect = Rect::from_center_size(pin_pos, Vec2::splat(PIN_RADIUS + STROKE_SIZE / 2.0));
     let pin_response = ui.interact(
         pin_rect,
         Id::from(format!("{cmp}.{pin_id}", cmp=component.id, pin_id=pin.name)),

@@ -1,15 +1,21 @@
 mod region;
 mod selection;
+pub mod nodes_panel;
+pub mod node_picker;
 
 use std::collections::HashMap;
+use std::ops::Sub;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use eframe::egui::{Align, Align2, Button, Color32, DragPanButtons, Frame, Id, Key, LayerId, Layout, PointerButton, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, ScrollArea, Sense, Stroke, Ui};
-use circuit_sim::{Circuit, PlayState};
-use circuit_sim::component::Component;
+use eframe::egui::{Align, Align2, CentralPanel, Color32, DragPanButtons, Frame, Id, Key, Layout, PointerButton, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, Stroke, Ui, Vec2, Widget};
+use eframe::epaint::{CubicBezierShape};
+use wireflowapi::{Circuit, PlayState};
+use wireflowapi::component::Component;
 use crate::AppState;
 use crate::ui_elements::{circuits};
-use crate::ui_elements::circuits::ComponentPinEvent;
+use crate::ui_elements::circuits::{ComponentPinEvent, PIN_RADIUS};
+use crate::ui_elements::circuits_scene::node_picker::NodePicker;
+use crate::ui_elements::circuits_scene::nodes_panel::NodePanel;
 use crate::ui_elements::circuits_scene::region::Region;
 use crate::ui_elements::circuits_scene::selection::Selection;
 
@@ -18,10 +24,10 @@ pub struct CircuitsScene {
     circuit: Arc<Mutex<Circuit>>,
     component_wiring: ComponentWiringProcess,
     selection: Selection,
-    components_prompt: ComponentsPrompt,
+    node_picker: NodePicker,
     last_mouse_pos: Pos2,
-    components_position: HashMap<String, Pos2>,
-    pins_position: HashMap<String, Pos2>,
+    components_info: HashMap<String, ComponentInfos>,
+    component_counter: u32,
 }
 
 #[derive(Debug, Default)]
@@ -31,12 +37,11 @@ struct ComponentWiringProcess {
     just_finished: bool
 }
 
-#[derive(Debug, Default)]
-struct ComponentsPrompt {
-    search: String,
-    show: bool,
+#[derive(Debug)]
+struct ComponentInfos {
+    rect: Rect,
     position: Pos2,
-    just_requested_focus: bool,
+    pins_position: HashMap<String, Pos2>
 }
 
 impl Default for CircuitsScene {
@@ -46,104 +51,75 @@ impl Default for CircuitsScene {
             component_wiring: ComponentWiringProcess::default(),
             selection: Selection::default(),
             last_mouse_pos: Pos2::ZERO,
-            components_prompt: ComponentsPrompt::default(),
-            components_position: HashMap::new(),
-            pins_position: HashMap::new(),
+            node_picker: NodePicker::default()
+                .id("node_picker_popup"),
+            components_info: HashMap::default(),
+            component_counter: 0,
         }
     }
 }
 
 impl CircuitsScene {
     pub fn show(&mut self, state: &mut AppState, rect: &mut Rect, ui: &mut Ui) {
-        let scene_res = self.render_scene(ui, rect);
+        NodePanel::default()
+            .id("scene_left_panel")
+            .title("Nodes")
+            .show(ui, self);
 
-        Popup::new(Id::new("scene_float_top"), ui.ctx().clone(), PopupAnchor::from(scene_res.rect), ui.layer_id())
-            .align(RectAlign::from_align2(Align2::CENTER_TOP))
-            .layout(Layout::left_to_right(Align::TOP))
-            .show(|ui| {
-                let running = self.is_running();
-                let label = if running { "⏹" } else { "▶" };
-                if ui.button(label).clicked() {
-                    if running {
-                        self.stop();
-                    } else {
-                        self.run();
-                    }
-                }
-            });
+        CentralPanel::default()
+            .show(ui.ctx(), |ui| {
+                let scene_res = self.render_scene(ui, rect);
 
-        if ui.input(|input| input.key_pressed(Key::N) && input.modifiers.command_only()) {
-            self.components_prompt.show = !self.components_prompt.show;
-            if self.components_prompt.show {
-                self.components_prompt.position = ui.ctx().pointer_hover_pos()
-                    .unwrap_or(ui.ctx().screen_rect().center());
-            }
-        }
-        Popup::new(Id::new("scene_components_popup"), ui.ctx().clone(), PopupAnchor::from(self.components_prompt.position), ui.layer_id())
-            .align(RectAlign::from_align2(Align2::CENTER_CENTER))
-            .width(300.0)
-            .frame(Frame::popup(ui.style())
-                .fill(Color32::TRANSPARENT)
-            )
-            .open(self.components_prompt.show)
-            .show(|ui| {
-
-                let res = ui.text_edit_singleline(&mut self.components_prompt.search);
-                let search = self.components_prompt.search.clone();
-
-                if !self.components_prompt.just_requested_focus {
-                    res.request_focus();
-                    self.components_prompt.just_requested_focus = true;
-                }
-
-                if ui.input(|input| input.key_pressed(Key::Escape)) {
-                    self.components_prompt = ComponentsPrompt::default();
-                }
-
-                ScrollArea::vertical()
-                    .max_height(300.0)
-                    .show(ui, |ui| {
-                        ui.set_min_height(300.0);
-
-                        let components = state.plugins
-                            .iter()
-                            .map(|plugin| &plugin.components)
-                            .flat_map(|comps| comps.iter())
-                            .filter(|(name, _)| name.contains(&search))
-                            .collect::<Vec<_>>();
-
-                        if !components.is_empty() {
-                            for (name, comp_type) in components {
-                                if ui.add(
-                                    Button::new(format!("{name}"))
-                                        .fill(Color32::TRANSPARENT)
-                                ).clicked() {
-                                    {
-                                        let mut circuit = self.circuit.lock().unwrap();
-                                        let node_id = format!("comp#{}", circuit.graph.node_count());
-                                        let comp = Component::new(&node_id, name.clone(), comp_type.clone());
-                                        let pos = self.last_mouse_pos;
-                                        self.components_position.insert(node_id.clone(), pos);
-
-                                        circuit.add(&node_id, comp);
-
-                                        self.components_prompt = ComponentsPrompt::default();
-                                    }
-                                }
-                                ui.separator();
+                Popup::new(Id::new("scene_float_top"), ui.ctx().clone(), PopupAnchor::from(scene_res.rect), ui.layer_id())
+                    .align(RectAlign::from_align2(Align2::CENTER_TOP))
+                    .layout(Layout::left_to_right(Align::TOP))
+                    .show(|ui| {
+                        let running = self.is_running();
+                        let label = if running { "⏹" } else { "▶" };
+                        if ui.button(label).clicked() {
+                            if running {
+                                self.stop();
+                            } else {
+                                self.run();
                             }
-                        } else {
-                            ui.centered_and_justified(|ui| ui.label(":( no components found"));
                         }
                     });
-            });
 
-        Popup::new(Id::new("scene_float_bottom"), ui.ctx().clone(), PopupAnchor::from(scene_res.rect), ui.layer_id())
-            .align(RectAlign::from_align2(Align2::CENTER_BOTTOM))
-            .layout(Layout::left_to_right(Align::TOP))
-            .show(|ui| {
-                ui.button("Play");
-                ui.button("Zozo");
+                if ui.input(|input| input.key_pressed(Key::N) && input.modifiers.command_only()) {
+                    self.node_picker.toggle(ui.ctx().screen_rect().center());
+                }
+
+                if let Some(entry) = self.node_picker.show(ui) {
+                    let mut circuit = self.circuit.lock().unwrap();
+                    let node_id = format!("comp#{}", self.component_counter);
+
+                    let mut component = Component::new(&node_id, entry.name.clone(), (entry.factory)());
+                    component.set_pins(HashMap::from_iter(
+                        entry.pins.iter()
+                            .map(|pin| (pin.name.clone(), pin.clone()))
+                    ));
+
+                    let pos = self.last_mouse_pos;
+                    self.components_info.insert(
+                        node_id.clone(),
+                        ComponentInfos {
+                            rect: Rect::ZERO,
+                            position: pos,
+                            pins_position: HashMap::default()
+                        }
+                    );
+
+                    circuit.add(&node_id, component);
+                    self.component_counter += 1;
+                };
+
+                Popup::new(Id::new("scene_float_bottom"), ui.ctx().clone(), PopupAnchor::from(scene_res.rect), ui.layer_id())
+                    .align(RectAlign::from_align2(Align2::CENTER_BOTTOM))
+                    .layout(Layout::left_to_right(Align::TOP))
+                    .show(|ui| {
+                        ui.button("Play");
+                        ui.button("Zozo");
+                    });
             });
 
         if self.is_running() {
@@ -157,6 +133,7 @@ impl CircuitsScene {
                 Scene::default()
                     .drag_pan_buttons(DragPanButtons::MIDDLE)
                     .show(ui, rect, |ui: &mut Ui| {
+
                         if let Some(mouse_pos) = ui.response().hover_pos() {
                             self.last_mouse_pos = mouse_pos;
                         }
@@ -164,14 +141,39 @@ impl CircuitsScene {
                         self.render_components(ui);
                         self.render_connexions(ui);
 
-                        if self.selection.is_selecting() || self.selection.is_complete() {
-                            self.selection.region.render(ui);
-                        }
+                        self.selection.show(ui, self.last_mouse_pos, &mut |selection, delta| {
+                            for (_, infos) in self.components_info
+                                .iter_mut()
+                                .filter(|(id, _)| selection.contains(*id)) {
+
+                                infos.position += delta;
+                            }
+                        });
 
                         self.handle_wiring(ui);
-                        self.handle_selection(ui);
+                        self.selection.handle(
+                            ui,
+                            self.last_mouse_pos,
+                            self.components_info
+                                .iter()
+                                .map(|(id, info)| (id.clone(), info.rect))
+                        );
+
+                        if ui.input(|i| i.key_pressed(Key::D) || i.key_pressed(Key::Delete))
+                            && !self.node_picker.open() && self.selection.is_complete() {
+                            self.remove_selected_components();
+                        }
                     })
             }).response
+    }
+
+    fn remove_selected_components(&mut self) {
+        for (id, _) in &self.selection.region.elements {
+            self.components_info.remove(id);
+            self.circuit.lock().unwrap().remove(id);
+        }
+
+        self.selection.clear();
     }
 
     fn handle_wiring(&mut self, ui: &mut Ui) {
@@ -183,7 +185,10 @@ impl CircuitsScene {
                 return;
             }
             let (start_comp_id, start_pin_id) = self.component_wiring.start().unwrap();
-            let start = self.pins_position.get(&format!("{start_comp_id}.{start_pin_id}")).unwrap();
+            let pins_position = &self.components_info.get(&start_comp_id)
+                .unwrap()
+                .pins_position;
+            let start = pins_position.get(&start_pin_id).unwrap();
             let painter = ui.painter();
 
             painter.line_segment(
@@ -204,65 +209,25 @@ impl CircuitsScene {
         }
     }
 
-    fn handle_selection(&mut self, ui: &mut Ui) {
-        if self.selection.is_selecting() {
-            if ui.response().dragged() {
-                self.selection.region.to(self.last_mouse_pos);
-            } else if ui.response().drag_stopped() {
-                self.selection.complete();
-                if !self.selection.is_complete() {
-                    self.selection.clear();
-                }
-            }
-            return;
-        }
-
-        if !self.selection.is_complete() {
-            if ui.response().drag_started() {
-                self.selection.clear();
-                self.selection.region = Region::from(self.last_mouse_pos);
-                self.selection.begin();
-            }
-            return;
-        }
-
-        let rect = self.selection.region.rect();
-
-        if rect.contains(self.last_mouse_pos) {
-            if ui.response().dragged() {
-                let delta = ui.response().drag_delta();
-                self.selection.region.translate(delta);
-                for (_, pos) in self.components_position
-                    .iter_mut()
-                    .filter(|(id, _)| self.selection.region.elements.contains_key(*id)) {
-
-                    *pos = *pos+delta;
-                }
-            }
-
-        } else if ui.response().is_pointer_button_down_on() {
-            self.selection.clear();
-        }
-    }
-
     fn render_components(&mut self, ui: &mut Ui) {
         let circuit_clone = self.circuit.clone();
         let mut circuit = circuit_clone.lock().unwrap();
 
-        for node_ind in circuit.graph.node_indices() {
-            let comp = circuit.graph
-                .node_weight_mut(node_ind)
-                .unwrap();
-
-            let component_pos = self.components_position.get_mut(&comp.id)
-                .unwrap();
-            let (pin_response, response) = circuits::draw(comp, *component_pos, ui);
+        for comp in circuit.graph.node_weights_mut() {
+            let component_infos = self.components_info.get_mut(&comp.id).unwrap();
+            let (pin_response, response) = circuits::draw(
+                ui,
+                comp,
+                component_infos.position,
+                true
+            );
 
             for (pin_name, pin_pos) in pin_response.pins_position {
-                self.pins_position.insert(format!("{}.{pin_name}", comp.id), pin_pos);
+                component_infos.pins_position.insert(pin_name, pin_pos);
             }
 
-            let mut component_rect = response.rect;
+
+            component_infos.rect = response.rect;
 
             if response.dragged() {
                 let drag_delta = response.drag_delta();
@@ -271,8 +236,8 @@ impl CircuitsScene {
                 } else {
                     self.selection.clear();
                 }
-                *component_pos = *component_pos+drag_delta;
-                component_rect = component_rect.translate(drag_delta);
+                component_infos.position += drag_delta;
+                component_infos.rect = component_infos.rect.translate(drag_delta);
             }
 
             if let Some(mouse_pos) = response.hover_pos() {
@@ -281,30 +246,22 @@ impl CircuitsScene {
 
             if response.clicked_by(PointerButton::Primary) {
                 if ui.input(|i| i.modifiers.shift) {
-                    self.selection.begin();
-                    self.selection.add(comp.id.clone(), component_rect);
-                    self.selection.complete();
+                    self.selection.select(comp.id.clone(), component_infos.rect);
                 } else {
-                    self.selection.select_single(comp.id.clone(), component_rect);
+                    self.selection.select_single(comp.id.clone(), component_infos.rect);
                 }
-            }
-
-            if self.selection.intersects(component_rect) {
-                self.selection.add(comp.id.clone(), component_rect);
-            } else if self.selection.contains(&comp.id) {
-                self.selection.remove(&comp.id);
             }
 
             if let Some(interaction) = pin_response.interaction {
                 let pin = comp.get(&interaction.pin_name).unwrap();
-                let pos = self.pins_position.get(&format!("{}.{}", comp.id, interaction.pin_name)).unwrap();
+                let pos = component_infos.pins_position.get(&interaction.pin_name).unwrap();
 
                 match interaction.event {
                     ComponentPinEvent::HOVERED => {
                         let painter = ui.painter();
                         painter.circle_filled(
                             *pos,
-                            4.0,
+                            PIN_RADIUS,
                             Color32::GOLD
                         );
                     },
@@ -331,21 +288,33 @@ impl CircuitsScene {
             let (source_comp, target_comp) = (circuit.graph.node_weight(source).unwrap(), circuit.graph.node_weight(target).unwrap());
             let (source_pin, target_pin) = (source_comp.get(source_pin).unwrap(), target_comp.get(target_pin).unwrap());
 
-            let source_pos = self.pins_position.get(&format!("{}.{}", source_comp.id, source_pin.name)).unwrap();
-            let target_pos = self.pins_position.get(&format!("{}.{}", target_comp.id, target_pin.name)).unwrap();
+            let source_comp_infos = self.components_info.get(&source_comp.id)
+                .unwrap();
+            let target_comp_infos = self.components_info.get(&target_comp.id)
+                .unwrap();
+
+            let source_pos = source_comp_infos.pins_position.get(&source_pin.name).unwrap();
+            let target_pos = target_comp_infos.pins_position.get(&target_pin.name).unwrap();
 
             let color = if source_pin.value.iter().fold(false, |acc, e| acc || *e) {
                 Color32::GREEN
             } else {
                 Color32::WHITE
             };
-            painter.line_segment(
-                [
-                    Pos2::new(source_pos.x, source_pos.y + 0.5),
-                    Pos2::new(target_pos.x, target_pos.y + 0.5)
-                ],
+
+            let delta = *target_pos - (*source_pos);
+            let offset = 0.3;
+            let amplitude = (10.0 + delta.y) - (1.0 / (delta.x + 0.1));
+            let control1 = (*source_pos + (delta * offset)) + Vec2::Y * amplitude;
+            let control2 = (*target_pos - (delta * offset)) - Vec2::Y * amplitude;
+            let bezier = CubicBezierShape::from_points_stroke(
+                [*source_pos, control1, control2, *target_pos],
+                false,
+                Color32::TRANSPARENT,
                 Stroke::new(circuits::STROKE_SIZE, color)
             );
+
+            painter.add(bezier);
         }
     }
 

@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Arc, Mutex};
 use petgraph::prelude::*;
-use crate::component::{Component, ComponentType, PinMode};
+use crate::component::{Component, PinMode};
 
 pub mod component;
 
@@ -21,11 +20,9 @@ pub struct SimulationState {
 
 }
 
-
-
 #[derive(Debug, Default, Clone)]
 pub struct Circuit {
-    pub graph: DiGraph<Component, (String, String)>,
+    pub graph: StableDiGraph<Component, (String, String)>,
     components_id: HashMap<String, NodeIndex>,
     edges_id: HashMap<String, EdgeIndex>,
     pub simulation: SimulationState
@@ -49,7 +46,16 @@ impl Circuit {
     
     pub fn remove(&mut self, id: &str) -> Option<Component> {
         let node_id = self.components_id.remove(id)?;
-        self.graph.remove_node(node_id)
+        let res = self.graph.remove_node(node_id);
+
+        // handle invalidated node indices and node edges
+        if self.graph.node_count() > 0 {
+            let last_index = self.graph.node_indices().last().unwrap();
+            self.components_id.insert(self.graph.node_weight(last_index).unwrap().id.clone(), last_index);
+            
+        }
+
+        res
     }
 
     pub fn play_state(&self) -> &PlayState {
@@ -60,25 +66,6 @@ impl Circuit {
     ///
     /// This will block the thread until the circuit is stopped
     pub fn run(&mut self) {
-        // let mut circuit_ref = circuit.lock().unwrap();
-        // if circuit_ref.simulation.play_state != PlayState::Stopped {
-        //     return;
-        // }
-        //
-        // circuit_ref.simulation.play_state = PlayState::Running;
-        // drop(circuit_ref);
-        //
-        // loop {
-        //     {
-        //         let mut circuit_ref = circuit.lock().unwrap();
-        //         match circuit_ref.simulation.play_state {
-        //             PlayState::Stopped => break,
-        //             PlayState::Paused => continue,
-        //             _ => circuit_ref.step()
-        //         }
-        //     }
-        // }
-
         if self.simulation.play_state != PlayState::Stopped {
             return;
         }
@@ -91,10 +78,6 @@ impl Circuit {
 
             self.step();
         }
-
-        // let mut circuit_ref = circuit.lock().unwrap();
-        // circuit_ref.simulation.to_visit.clear();
-        // circuit_ref.simulation.visited.clear();
     }
 
     /// Computes all remaining components once
@@ -198,7 +181,17 @@ impl Circuit {
         let source_pin = &self.graph[*source_node_id].get(source.1).unwrap();
         let target_pin = &self.graph[*target_node_id].get(target.1).unwrap();
 
-        if (source_pin.mode == target_pin.mode) || !(source_pin.mode == PinMode::Output && target_pin.mode == PinMode::Input) {
+        if source_pin.mode == target_pin.mode {
+            return false;
+        }
+
+        // if we want to wire an input to an output
+        // reverse the action because only output --> input wiring is allowed
+        if source_pin.mode == PinMode::Input && target_pin.mode == PinMode::Output {
+            return self.wire(target, source);
+        }
+
+        if self.is_input_wired(target.0, target.1) {
             return false;
         }
 
@@ -206,6 +199,26 @@ impl Circuit {
         let edge_id = self.graph.add_edge(*source_node_id, *target_node_id, (source.1.to_string(), target.1.to_string()));
         self.edges_id.insert(wire_id, edge_id);
         true
+    }
+
+    #[inline]
+    pub fn is_input_wired(&self, comp_id: &str, pin_id: &str) -> bool {
+        self.edges_id.keys()
+            .map(|edge_id| {
+                let mut split = edge_id.split('_');
+                let mut source = split.next()
+                    .unwrap()
+                    .split('.');
+                let mut target = split.next()
+                    .unwrap()
+                    .split('.');
+
+                (
+                    (source.next().unwrap(), source.next().unwrap()),
+                    (target.next().unwrap(), target.next().unwrap()),
+                )
+            })
+            .any(|(_, target)| target.0 == comp_id && target.1 == pin_id)
     }
 
     /// Disconnect two component
@@ -251,3 +264,4 @@ impl Circuit {
 
 #[cfg(test)]
 mod tests;
+pub mod registry;

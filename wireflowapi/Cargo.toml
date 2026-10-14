@@ -1,7 +1,9 @@
 [package]
-name = "circuit_sim"
+name = "wireflowapi"
 version = "0.1.0"
 edition = "2024"
+
+[lib]
 
 [dependencies]
 petgraph = "0.8.0"

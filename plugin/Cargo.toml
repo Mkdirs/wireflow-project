@@ -1,7 +1,0 @@
-[package]
-name = "plugin"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-circuit_sim = {path = "../circuit_sim"}

@@ -1,12 +1,11 @@
+pub mod primitives;
+pub mod embedded;
+
 use std::any::Any;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
-use std::rc::Rc;
-use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, Instant};
-use crate::Circuit;
+use std::sync::{Arc, Mutex};
 
 /// A Component receives inputs and gives outputs
 ///
@@ -31,6 +30,7 @@ pub struct Pin {
     pub value: Vec<bool>,
 }
 
+
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum PinMode {
     Input,
@@ -40,8 +40,6 @@ pub enum PinMode {
 
 
 pub trait ComponentType : Any+Debug+Send+Sync {
-    fn description(&self) -> String;
-    fn default_pins(&self) -> Vec<Pin>;
     fn compute(&mut self, pins: &mut HashMap<String, Pin>) -> bool;
 }
 impl dyn ComponentType {
@@ -54,20 +52,11 @@ impl Component {
     /// Constructs a new [Component] from the given descriptor [T]
     pub fn new(id: &str, name: String, component: Arc<Mutex<dyn ComponentType>>) -> Self
     {
-        
-        let pins:HashMap<String, Pin> = {
-            let component = component.lock().unwrap();
-            HashMap::from_iter(
-                component.default_pins().into_iter()
-                    .map(|pin| (pin.name.clone(), pin))
-                    .collect::<Vec<_>>()
-            )
-        };
         Self {
             id: id.to_string(),
             name,
             component_type: component,
-            pins,
+            pins: HashMap::new(),
             is_dirty: true,
         }
     }
@@ -75,6 +64,10 @@ impl Component {
     pub fn compute(&mut self) {
         let mut comp = self.component_type.lock().unwrap();
         self.is_dirty = comp.compute(&mut self.pins);
+    }
+    
+    pub fn set_pins(&mut self, pins: HashMap<String, Pin>) {
+        self.pins = pins;
     }
 
     /// Sets a pin's value

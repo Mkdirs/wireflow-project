@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-circuit_sim = {path = "../circuit_sim"}
-plugin = {path = "../plugin"}
+wireflowapi = {path = "../wireflowapi" }
 eframe = "0.32.1"
 log = "0.4.27"
+rand = "0.10.1"
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

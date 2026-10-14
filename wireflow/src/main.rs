@@ -2,16 +2,13 @@
 mod views;
 mod ui_elements;
 
-use eframe::{run_native, App, CreationContext, Frame, NativeOptions};
-use eframe::egui::{CentralPanel, Context, IconData, TopBottomPanel};
-use circuit_sim::component::Component;
-use plugin::{Plugin, WIREFLOW};
 use crate::views::{View, ViewId, Workspace};
+use eframe::egui::{CentralPanel, Context, IconData, TopBottomPanel};
+use eframe::{egui, run_native, App, CreationContext, Frame, NativeOptions};
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct AppState {
     current_view: ViewId,
-    plugins: Vec<Plugin>,
     workspace_name: String
 }
 
@@ -23,8 +20,7 @@ struct Wireflow {
 
 impl Wireflow {
     pub fn new(cc: &CreationContext<'_>) -> Self {
-        let mut wireflow = Wireflow::default();
-        wireflow.state.plugins.push(WIREFLOW.to_owned());
+        let wireflow = Wireflow::default();
 
         wireflow
     }

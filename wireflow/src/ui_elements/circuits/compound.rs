@@ -1,5 +1,5 @@
 use eframe::egui::{Align, Color32, Frame, Layout, Pos2, Rangef, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
-use circuit_sim::component::{Component, Pin};
+use wireflowapi::component::{Component, Pin};
 use crate::ui_elements::circuits::{default_senses, get_pin_interaction, ComponentPinResponse, ComponentWidget, ComponentWidgetResponse, PIN_LENGTH, STROKE_SIZE};
 use crate::ui_elements::circuits::logicgates::LOGIC_GATE_SIZE;
 
@@ -21,7 +21,7 @@ impl<'a> ComponentWidget for CompoundWidget<'a> {
         LOGIC_GATE_SIZE
     }
 
-    fn draw(&self, ui: &mut Ui) -> ComponentWidgetResponse {
+    fn draw(&self, ui: &mut Ui, interactive: bool) -> ComponentWidgetResponse {
         let rect = self.rect();
         let mut pin_res = ComponentPinResponse::default();
         
@@ -30,7 +30,7 @@ impl<'a> ComponentWidget for CompoundWidget<'a> {
         let response = ui.put(rect, |ui: &mut Ui| {
             ui.scope_builder(
                 UiBuilder::new()
-                    .sense(default_senses())
+                    .sense(default_senses(interactive))
                     .layout(Layout::left_to_right(Align::Center)),
                 |ui| {
                     Frame::default()
@@ -49,7 +49,7 @@ impl<'a> ComponentWidget for CompoundWidget<'a> {
                                     ui.horizontal(|ui| {
                                         let next_widget_pos = ui.next_widget_position();
                                         let pos = Pos2::new(next_widget_pos.x-margin-STROKE_SIZE-PIN_LENGTH, next_widget_pos.y);
-                                        self.draw_pin(ui, input, pos.x..=next_widget_pos.x-margin-STROKE_SIZE, pos, &mut pin_res);
+                                        self.draw_pin(ui, input, pos.x..=next_widget_pos.x-margin-STROKE_SIZE, pos, interactive, &mut pin_res);
                                     });
                                 }
                             });
@@ -64,7 +64,7 @@ impl<'a> ComponentWidget for CompoundWidget<'a> {
                                     ui.horizontal(|ui| {
                                         let next_widget_pos = ui.next_widget_position();
                                         let pos = Pos2::new(next_widget_pos.x+PIN_LENGTH, next_widget_pos.y);
-                                        self.draw_pin(ui, output, next_widget_pos.x..=pos.x, pos, &mut pin_res);
+                                        self.draw_pin(ui, output, next_widget_pos.x..=pos.x, pos, interactive, &mut pin_res);
                                     });
                                 }
                             });
@@ -78,14 +78,14 @@ impl<'a> ComponentWidget for CompoundWidget<'a> {
 }
 
 impl<'a> CompoundWidget<'a> {
-    fn draw_pin(&self, ui: &mut Ui, pin: &Pin, x: impl Into<Rangef>, pin_pos:Pos2, pin_res: &mut ComponentPinResponse) {
+    fn draw_pin(&self, ui: &mut Ui, pin: &Pin, x: impl Into<Rangef>, pin_pos:Pos2, interactive: bool, pin_res: &mut ComponentPinResponse) {
         let painter = ui.painter();
         painter.hline(x, pin_pos.y, Stroke::new(STROKE_SIZE, Color32::WHITE));
         ui.label(&pin.name);
         pin_res.pins_position.insert(pin.name.clone(), pin_pos);
 
         if pin_res.interaction.is_none() {
-            pin_res.interaction = get_pin_interaction(ui, self.component, pin, pin_pos);
+            pin_res.interaction = get_pin_interaction(ui, self.component, pin, pin_pos, interactive);
         }
     }
 }

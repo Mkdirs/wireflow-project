@@ -28,6 +28,9 @@ impl Region {
     pub fn translate(&mut self, delta: Vec2) {
         self.start += delta;
         self.end += delta;
+        for (_, rect) in self.elements.iter_mut() {
+            *rect = rect.translate(delta);
+        }
     }
 
     pub fn fit_to_elements(&mut self) {
@@ -45,10 +48,10 @@ impl Region {
     pub fn render(&self, ui: &Ui) {
         let rect = self.rect();
         let painter = ui.painter();
-        painter.rect_stroke(rect, 0.0, ui.style().visuals.selection.stroke, StrokeKind::Outside);
+        painter.rect_stroke(rect, 0.0, ui.ctx().style().visuals.selection.stroke, StrokeKind::Outside);
 
         for (_, rect) in &self.elements {
-            painter.rect_stroke(*rect, 0.0, ui.style().visuals.selection.stroke, StrokeKind::Outside);
+            painter.rect_stroke(*rect, 0.0, ui.ctx().style().visuals.selection.stroke, StrokeKind::Outside);
         }
     }
 }
