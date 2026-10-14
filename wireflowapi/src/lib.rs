@@ -201,6 +201,28 @@ impl Circuit {
         true
     }
 
+    pub fn is_pin_wired(&self, comp_id: &str, pin_id: &str) -> bool {
+        self.edges_id.keys()
+            .map(|edge_id| {
+                let mut split = edge_id.split('_');
+                let mut source = split.next()
+                    .unwrap()
+                    .split('.');
+                let mut target = split.next()
+                    .unwrap()
+                    .split('.');
+
+                (
+                    (source.next().unwrap(), source.next().unwrap()),
+                    (target.next().unwrap(), target.next().unwrap()),
+                )
+            })
+            .any(|(source, target)|
+                (source.0 == comp_id && source.1 == pin_id) ||
+                    (target.0 == comp_id && target.1 == pin_id)
+            )
+    }
+
     #[inline]
     pub fn is_input_wired(&self, comp_id: &str, pin_id: &str) -> bool {
         self.edges_id.keys()
@@ -234,23 +256,25 @@ impl Circuit {
 
     /// Remove all wires associated with the pin
     ///
-    /// source: (source_id, source_pin_id)
-    pub fn unwire_all(&mut self, source: (&str, &str)) {
-        let node_id = self.components_id.get(source.0).unwrap();
-        let pin = self.graph.node_weight(*node_id).unwrap().get(source.1).unwrap();
+    /// comp_pin: (comp_id, pin_id)
+    pub fn unwire_all(&mut self, comp_pin: (&str, &str)) {
+        let node_id = self.components_id.get(comp_pin.0).unwrap();
+        let pin = self.graph.node_weight(*node_id).unwrap().get(comp_pin.1).unwrap();
         let wires = if pin.mode == PinMode::Input{
             self.graph.edges_directed(*node_id, Incoming)
                 .map(|edge| {
-                    let (edge_comp, edge_pin) = edge.weight();
+                    let (source_pin, _) = edge.weight();
+                    let source_comp = &self.graph[edge.source()].id;
                     
-                    format!("{}.{}_{}.{}", edge_comp, edge_pin, source.0, source.1)
+                    format!("{}.{}_{}.{}", source_comp, source_pin, comp_pin.0, comp_pin.1)
                 }).collect::<Vec<_>>()
         }else{
             self.graph.edges_directed(*node_id, Outgoing)
                 .map(|edge| {
-                    let (edge_comp, edge_pin) = edge.weight();
+                    let (_, target_pin) = edge.weight();
+                    let target_comp = &self.graph[edge.target()].id;
 
-                    format!("{}.{}_{}.{}", source.0, source.1, edge_comp, edge_pin)
+                    format!("{}.{}_{}.{}", comp_pin.0, comp_pin.1, target_comp, target_pin)
                 }).collect::<Vec<_>>()
         };
         

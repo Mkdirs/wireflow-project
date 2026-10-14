@@ -5,6 +5,7 @@ pub mod node_picker;
 
 use std::collections::HashMap;
 use std::ops::Sub;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use eframe::egui::{Align, Align2, CentralPanel, Color32, DragPanButtons, Frame, Id, Key, Layout, PointerButton, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, Stroke, Ui, Vec2, Widget};
@@ -18,7 +19,6 @@ use crate::ui_elements::circuits_scene::node_picker::NodePicker;
 use crate::ui_elements::circuits_scene::nodes_panel::NodePanel;
 use crate::ui_elements::circuits_scene::selection::Selection;
 
-#[derive(Debug)]
 pub struct CircuitsScene {
     circuit: Arc<Mutex<Circuit>>,
     component_wiring: ComponentWiringProcess,
@@ -29,11 +29,12 @@ pub struct CircuitsScene {
     component_counter: u32,
 }
 
-#[derive(Debug, Default)]
 struct ComponentWiringProcess {
     start: String,
     end: String,
-    just_finished: bool
+    just_finished: bool,
+    delete: Option<(String, String)>,
+    on_delete: Rc<dyn Fn(&mut Circuit, &str, &str)>
 }
 
 #[derive(Debug)]
@@ -47,7 +48,15 @@ impl Default for CircuitsScene {
     fn default() -> Self {
         Self {
             circuit: Arc::new(Mutex::new(Circuit::default())),
-            component_wiring: ComponentWiringProcess::default(),
+            component_wiring: ComponentWiringProcess{
+                start: String::new(),
+                end: String::new(),
+                just_finished: false,
+                delete: None,
+                on_delete: Rc::new(|circuit, comp, pin| {
+                    circuit.unwire_all((comp, pin));
+                }),
+            },
             selection: Selection::default(),
             last_mouse_pos: Pos2::ZERO,
             node_picker: NodePicker::default()
@@ -178,6 +187,13 @@ impl CircuitsScene {
     fn handle_wiring(&mut self, ui: &mut Ui) {
         let circuit_clone = self.circuit.clone();
         let mut circuit = circuit_clone.lock().unwrap();
+
+        if let Some((comp, pin)) = &self.component_wiring.delete {
+            (self.component_wiring.on_delete)(&mut circuit, &comp, &pin);
+            self.component_wiring.reset();
+            return;
+        }
+
         if self.component_wiring.beginning() {
             if ui.response().is_pointer_button_down_on() {
                 self.component_wiring.reset();
@@ -210,9 +226,9 @@ impl CircuitsScene {
 
     fn render_components(&mut self, ui: &mut Ui) {
         let circuit_clone = self.circuit.clone();
-        let mut circuit = circuit_clone.lock().unwrap();
+        let circuit = circuit_clone.lock().unwrap();
 
-        for comp in circuit.graph.node_weights_mut() {
+        for comp in circuit.graph.node_weights() {
             let component_infos = self.components_info.get_mut(&comp.id).unwrap();
             let (pin_response, response) = circuits::draw(
                 ui,
@@ -257,13 +273,28 @@ impl CircuitsScene {
 
                 match interaction.event {
                     ComponentPinEvent::HOVERED => {
+                        let color = if ui.input(|i| i.modifiers.shift) &&
+                            circuit.is_pin_wired(&comp.id, &interaction.pin_name) &&
+                            !self.component_wiring.beginning()
+                        {
+                            Color32::RED
+                        } else {
+                            Color32::GOLD
+                        };
                         let painter = ui.painter();
                         painter.circle_filled(
                             *pos,
                             PIN_RADIUS,
-                            Color32::GOLD
+                            color
                         );
                     },
+
+                    ComponentPinEvent::CLICKED if ui.input(|i| i.modifiers.shift) && circuit.is_pin_wired(&comp.id, &interaction.pin_name) => {
+                        if !self.component_wiring.beginning() {
+                            self.component_wiring.delete = Some((comp.id.clone(), interaction.pin_name));
+                        }
+                    },
+
                     ComponentPinEvent::CLICKED if !self.component_wiring.just_finished() => {
                         self.component_wiring.target(&comp.id, &pin.name);
                     },
@@ -378,7 +409,10 @@ impl ComponentWiringProcess {
     }
 
     pub fn reset(&mut self) {
-        *self = ComponentWiringProcess::default();
+        self.start.clear();
+        self.end.clear();
+        self.just_finished = false;
+        self.delete = None;
     }
 
     pub fn target(&mut self, component_id: &str, pin_id: &str) {

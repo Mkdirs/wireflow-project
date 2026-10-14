@@ -1,10 +1,8 @@
-use eframe::egui::{CentralPanel, Label, Rect, ScrollArea, SidePanel, TextWrapMode, Ui, WidgetText};
-use eframe::egui::AtomKind::Text;
+use eframe::egui::{Rect, Ui};
 use crate::AppState;
 use crate::ui_elements::CircuitsScene;
-use crate::views::{View, ViewId};
+use crate::views::View;
 
-#[derive(Debug)]
 pub struct Workspace {
     scene: CircuitsScene,
     rect: Rect
