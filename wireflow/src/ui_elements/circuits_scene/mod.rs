@@ -4,7 +4,6 @@ pub mod nodes_panel;
 pub mod node_picker;
 
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::ops::Sub;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};

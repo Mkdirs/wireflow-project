@@ -3,7 +3,6 @@ mod circuits_scene;
 pub mod tabview;
 
 use eframe::egui::Ui;
-pub use circuits::draw;
 pub use circuits_scene::CircuitsScene;
 
 pub trait UiElement {
