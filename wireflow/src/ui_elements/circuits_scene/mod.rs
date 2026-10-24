@@ -4,6 +4,7 @@ pub mod nodes_panel;
 pub mod node_picker;
 
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::ops::Sub;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -13,7 +14,7 @@ use eframe::epaint::{CubicBezierShape};
 use wireflowapi::{Circuit, PlayState};
 use wireflowapi::component::Component;
 use crate::AppState;
-use crate::ui_elements::{circuits};
+use crate::ui_elements::{circuits, UiElement};
 use crate::ui_elements::circuits::{ComponentPinEvent, PIN_RADIUS};
 use crate::ui_elements::circuits_scene::node_picker::NodePicker;
 use crate::ui_elements::circuits_scene::nodes_panel::NodePanel;
@@ -67,16 +68,20 @@ impl Default for CircuitsScene {
     }
 }
 
-impl CircuitsScene {
-    pub fn show(&mut self, state: &mut AppState, rect: &mut Rect, ui: &mut Ui) {
+impl UiElement for CircuitsScene {
+    type State = (AppState, Rect);
+
+    fn show(&mut self, ui: &mut Ui, args: Self::State) -> Self::State {
+        let (mut state, mut rect) = args;
+        
         NodePanel::default()
             .id("scene_left_panel")
             .title("Nodes")
             .show(ui, self);
 
         CentralPanel::default()
-            .show(ui.ctx(), |ui| {
-                let scene_res = self.render_scene(ui, rect);
+            .show_inside(ui, |ui| {
+                let scene_res = self.render_scene(ui, &mut rect);
 
                 Popup::new(Id::new("scene_float_top"), ui.ctx().clone(), PopupAnchor::from(scene_res.rect), ui.layer_id())
                     .align(RectAlign::from_align2(Align2::CENTER_TOP))
@@ -133,8 +138,12 @@ impl CircuitsScene {
         if self.is_running() {
             ui.ctx().request_repaint();
         }
+        
+        return (state, rect);
     }
+}
 
+impl CircuitsScene {
     fn render_scene(&mut self, ui: &mut Ui, rect: &mut Rect) -> Response {
         Frame::new()
             .show(ui, |ui| {

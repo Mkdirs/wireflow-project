@@ -10,7 +10,7 @@ pub trait View: Default {
 
 pub trait ViewState : Default {}
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub enum ViewId {
     #[default]
     Workspace,

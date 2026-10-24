@@ -20,7 +20,7 @@ impl NodePanel {
         SidePanel::left(self.id.clone())
             .default_width(200.0)
             .resizable(false)
-            .show(ui.ctx(), |ui| {
+            .show_inside(ui, |ui| {
                 ui.vertical_centered(|ui| ui.label(self.title.clone()));
                 ui.separator();
                 ScrollArea::both()
