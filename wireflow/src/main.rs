@@ -1,15 +1,17 @@
 
 mod views;
 mod ui_elements;
+pub mod actions;
 
-use crate::views::{View, ViewId, Workspace};
+use crate::views::{View, ViewId};
 use eframe::egui::{CentralPanel, Context, IconData, TopBottomPanel};
 use eframe::{run_native, App, CreationContext, Frame, NativeOptions};
+use crate::views::workspace::Workspace;
 
 #[derive(Default, Clone)]
 pub struct AppState {
     current_view: ViewId,
-    workspace_name: String
+    workspace_name: String,
 }
 
 #[derive(Default)]

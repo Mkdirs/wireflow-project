@@ -1,5 +1,4 @@
-use eframe::egui::{Atom, Atoms, Button, CentralPanel, Color32, Frame, Margin, Rect, Response, ScrollArea, Sense, Stroke, StrokeKind, TopBottomPanel, Ui, Vec2, Widget};
-use eframe::egui::scroll_area::State;
+use eframe::egui::{Button, CentralPanel, Frame, Rect, ScrollArea, TopBottomPanel, Ui, Vec2};
 use crate::ui_elements::UiElement;
 
 #[derive(Default, Debug)]
@@ -21,6 +20,14 @@ pub struct TabView<T> {
 impl <T> TabView<T> {
     pub fn add(&mut self, title: impl Into<String>, state: T) {
         self.tabs.push(Tab{ state, title: title.into() });
+    }
+    
+    pub fn get_current_tab(&self) -> Option<&Tab<T>> {
+        self.tabs.get(self.current_tab)
+    }
+    
+    pub fn get_current_tab_mut(&mut self) -> Option<&mut Tab<T>> {
+        self.tabs.get_mut(self.current_tab)
     }
 }
 

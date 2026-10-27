@@ -8,16 +8,18 @@ use std::ops::Sub;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use eframe::egui::{Align, Align2, CentralPanel, Color32, DragPanButtons, Frame, Id, Key, Layout, PointerButton, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, Stroke, Ui, Vec2, Widget};
+use eframe::egui::{Align, Align2, CentralPanel, Color32, DragPanButtons, Frame, Id, Layout, PointerButton, Popup, PopupAnchor, Pos2, Rect, RectAlign, Response, Scene, Stroke, Ui, Vec2, Widget};
 use eframe::epaint::{CubicBezierShape};
 use wireflowapi::{Circuit, PlayState};
 use wireflowapi::component::Component;
+use crate::actions::ActionHandler;
 use crate::AppState;
 use crate::ui_elements::{circuits, UiElement};
 use crate::ui_elements::circuits::{ComponentPinEvent, PIN_RADIUS};
 use crate::ui_elements::circuits_scene::node_picker::NodePicker;
 use crate::ui_elements::circuits_scene::nodes_panel::NodePanel;
 use crate::ui_elements::circuits_scene::selection::Selection;
+use crate::views::workspace::WorkspaceAction;
 
 pub struct CircuitsScene {
     circuit: Arc<Mutex<Circuit>>,
@@ -97,10 +99,6 @@ impl UiElement for CircuitsScene {
                         }
                     });
 
-                if ui.input(|input| input.key_pressed(Key::N) && input.modifiers.command_only()) {
-                    self.node_picker.toggle(ui.ctx().screen_rect().center());
-                }
-
                 if let Some(entry) = self.node_picker.show(ui) {
                     let mut circuit = self.circuit.lock().unwrap();
                     let node_id = format!("comp#{}", self.component_counter);
@@ -174,11 +172,6 @@ impl CircuitsScene {
                                 .iter()
                                 .map(|(id, info)| (id.clone(), info.rect))
                         );
-
-                        if ui.input(|i| i.key_pressed(Key::D) || i.key_pressed(Key::Delete))
-                            && !self.node_picker.open() && self.selection.is_complete() {
-                            self.remove_selected_components();
-                        }
                     })
             }).response
     }
@@ -386,6 +379,22 @@ impl CircuitsScene {
 
     pub fn stop(&self) {
         self.circuit.lock().unwrap().stop();
+    }
+}
+
+impl ActionHandler for CircuitsScene {
+    type Action = WorkspaceAction;
+
+    fn handle_action(&mut self, action: Self::Action, ui: &mut Ui) {
+        match action {
+            WorkspaceAction::AddComponent => {
+                self.node_picker.toggle(ui.ctx().screen_rect().center());
+            },
+            WorkspaceAction::DeleteComponent if !self.node_picker.open() && self.selection.is_complete() => {
+                self.remove_selected_components();
+            },
+            _ => {}
+        }
     }
 }
 
